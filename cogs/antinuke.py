@@ -10,6 +10,28 @@ def is_antinuke_or_admin():
         return False
     return commands.check(predicate)
 
+class ConfirmView(discord.ui.View):
+    def __init__(self, author: discord.Member):
+        super().__init__(timeout=60)
+        self.author = author
+        self.value = None
+
+    @discord.ui.button(label="Nuke", style=discord.ButtonStyle.danger, custom_id="nuke_confirm")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.author:
+            await interaction.response.send_message("No puedes usar este botón.", ephemeral=True)
+            return
+        self.value = True
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, custom_id="nuke_cancel")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.author:
+            await interaction.response.send_message("No puedes usar este botón.", ephemeral=True)
+            return
+        self.value = False
+        self.stop()
+
 class Antinuke(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -74,6 +96,36 @@ class Antinuke(commands.Cog):
             await ctx.reply(embed=embed, mention_author=False)
         except Exception as e:
             await ctx.reply(f"❌ Error al mostrar el canal: `{e}`", mention_author=False)
+
+    @commands.command(name="nuke")
+    @is_antinuke_or_admin()
+    async def nuke(self, ctx):
+        view = ConfirmView(ctx.author)
+        message = await ctx.send(
+            content="Are you sure that you want to **nuke** this **channel**?", 
+            view=view
+        )
+
+        await view.wait()
+
+        if view.value is None:
+            await message.edit(content="El tiempo para confirmar el nuke ha expirado.", view=None)
+            return
+
+        if view.value:
+            channel = ctx.channel
+            position = channel.position
+
+            # Funciona tanto para canales de texto como de voz
+            new_channel = await channel.clone(reason=f"Nuke ejecutado por {ctx.author}")
+            await new_channel.edit(position=position)
+            
+            await channel.delete()
+
+            if isinstance(new_channel, discord.TextChannel):
+                await new_channel.send(f"✅ Canal reiniciado correctamente por {ctx.author.mention}.")
+        else:
+            await message.edit(content="Acción de nuke cancelada.", view=None)
 
     @commands.command(name="hb")
     @is_antinuke_or_admin()
