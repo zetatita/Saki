@@ -1,15 +1,6 @@
 import discord
 from discord.ext import commands
 
-def is_antinuke_or_admin():
-    async def predicate(ctx):
-        if ctx.author.guild_permissions.administrator:
-            return True
-        if any(role.name.lower() == "antinuke" for role in ctx.author.roles):
-            return True
-        return False
-    return commands.check(predicate)
-
 class ConfirmView(discord.ui.View):
     def __init__(self, author: discord.Member):
         super().__init__(timeout=60)
@@ -36,18 +27,8 @@ class Antinuke(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def cog_command_error(self, ctx, error):
-        if isinstance(error, commands.CheckFailure):
-            embed = discord.Embed(
-                description="### **Acceso Denegado**\n\nNo tienes el rol de **Antinuke** ni permisos de Administrador para usar este comando.",
-                color=0x1e1f22
-            )
-            embed.set_author(name=f"{self.bot.user.name} seguridad", icon_url=self.bot.user.display_avatar.url)
-            await ctx.reply(embed=embed, mention_author=False)
-
-
     @commands.command(name="nuke")
-    @is_antinuke_or_admin()
+    @commands.has_permissions(manage_channels=True)
     async def nuke(self, ctx):
         view = ConfirmView(ctx.author)
         message = await ctx.send(
@@ -65,7 +46,6 @@ class Antinuke(commands.Cog):
             channel = ctx.channel
             position = channel.position
 
-            # Funciona tanto para canales de texto como de voz
             new_channel = await channel.clone(reason=f"Nuke ejecutado por {ctx.author}")
             await new_channel.edit(position=position)
             
@@ -75,38 +55,6 @@ class Antinuke(commands.Cog):
                 await new_channel.send(f"✅ Canal reiniciado correctamente por {ctx.author.mention}.")
         else:
             await message.edit(content="Acción de nuke cancelada.", view=None)
-
-    @commands.command(name="hb")
-    @is_antinuke_or_admin()
-    async def hb(self, ctx, *, args=None):
-        embed = discord.Embed(
-            description="### **Sistema Antinuke**\n\nComando `hb` ejecutado correctamente.",
-            color=0x1e1f22
-        )
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="hblist", aliases=["hb lis"])
-    @is_antinuke_or_admin()
-    async def hblist(self, ctx):
-        embed = discord.Embed(
-            description="### **Lista de HB (Antinuke)**\n\nNo hay registros activos actualmente.",
-            color=0x1e1f22
-        )
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="unban")
-    @is_antinuke_or_admin()
-    async def unban(self, ctx, user_id: int):
-        try:
-            user = await self.bot.fetch_user(user_id)
-            await ctx.guild.unban(user, reason=f"Desbaneado por {ctx.author} (Antinuke)")
-            embed = discord.Embed(
-                description=f"### **Desbaneo Exitoso**\n\nSe ha retirado el baneo de **{user}** correctamente.",
-                color=0x1e1f22
-            )
-            await ctx.reply(embed=embed, mention_author=False)
-        except Exception:
-            await ctx.reply("No se pudo encontrar al usuario o ocurrió un error al intentar desbanearlo.", mention_author=False)
 
 async def setup(bot):
     await bot.add_cog(Antinuke(bot))
