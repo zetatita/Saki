@@ -16,17 +16,7 @@ class Utility(commands.Cog):
             message.created_at
         )
 
-    @commands.command(name="snipe", aliases=["s"])
-    async def snipe(self, ctx):
-        """Muestra el último mensaje eliminado en el canal. Uso: ,snipe"""
-        data = self.snipes.get(ctx.channel.id)
-        if not data:
-            return await ctx.send("No hay mensajes eliminados recientemente en este canal.")
-
-        content, author, timestamp = data
-        embed = discord.Embed(description=content, color=0x2b2d31, timestamp=timestamp)
-        embed.set_author(name=str(author), icon_url=author.display_avatar.url)
-        await ctx.send(embed=embed)
+  
 
     @commands.command(name="userinfo", aliases=["ui", "whois"])
     async def userinfo(self, ctx, member: discord.Member = None):
