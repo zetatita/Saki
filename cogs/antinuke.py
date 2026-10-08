@@ -45,57 +45,6 @@ class Antinuke(commands.Cog):
             embed.set_author(name=f"{self.bot.user.name} seguridad", icon_url=self.bot.user.display_avatar.url)
             await ctx.reply(embed=embed, mention_author=False)
 
-    @commands.command(name="lock")
-    @commands.has_permissions(manage_channels=True)
-    async def lock(self, ctx):
-        try:
-            await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
-            embed = discord.Embed(
-                description=f"✅ {ctx.author.mention}: Se aplicó **bloqueo** a {ctx.channel.mention}. Se siguen aplicando los permisos específicos de roles y miembros.",
-                color=0x2ecc71
-            )
-            await ctx.reply(embed=embed, mention_author=False)
-        except Exception as e:
-            await ctx.reply(f"❌ Error al bloquear el canal: `{e}`", mention_author=False)
-
-    @commands.command(name="unlock")
-    @commands.has_permissions(manage_channels=True)
-    async def unlock(self, ctx):
-        try:
-            await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
-            embed = discord.Embed(
-                description=f"✅ {ctx.author.mention}: Se aplicó **desbloqueo** a {ctx.channel.mention}. Se siguen aplicando los permisos específicos de roles y miembros.",
-                color=0x2ecc71
-            )
-            await ctx.reply(embed=embed, mention_author=False)
-        except Exception as e:
-            await ctx.reply(f"❌ Error al desbloquear el canal: `{e}`", mention_author=False)
-
-    @commands.command(name="hide")
-    @commands.has_permissions(manage_channels=True)
-    async def hide(self, ctx):
-        try:
-            await ctx.channel.set_permissions(ctx.guild.default_role, view_channel=False)
-            embed = discord.Embed(
-                description=f"✅ {ctx.author.mention}: Se aplicó **ocultación** a {ctx.channel.mention}. Se siguen aplicando los permisos específicos de roles y miembros.",
-                color=0x2ecc71
-            )
-            await ctx.reply(embed=embed, mention_author=False)
-        except Exception as e:
-            await ctx.reply(f"❌ Error al ocultar el canal: `{e}`", mention_author=False)
-
-    @commands.command(name="unhide")
-    @commands.has_permissions(manage_channels=True)
-    async def unhide(self, ctx):
-        try:
-            await ctx.channel.set_permissions(ctx.guild.default_role, view_channel=True)
-            embed = discord.Embed(
-                description=f"✅ {ctx.author.mention}: Se aplicó **visibilidad** a {ctx.channel.mention}. Se siguen aplicando los permisos específicos de roles y miembros.",
-                color=0x2ecc71
-            )
-            await ctx.reply(embed=embed, mention_author=False)
-        except Exception as e:
-            await ctx.reply(f"❌ Error al mostrar el canal: `{e}`", mention_author=False)
 
     @commands.command(name="nuke")
     @is_antinuke_or_admin()
