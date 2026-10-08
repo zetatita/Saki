@@ -16,6 +16,11 @@ initial_extensions = [
     'cogs.tracker',
     'cogs.vip',
     'cogs.moderation',
+    'cogs.antinuke',
+    'cogs.autoresponder',
+    'cogs.embeds',
+    'cogs.jail',
+    'cogs.utility',
 ]
 
 @bot.event
