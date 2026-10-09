@@ -299,7 +299,7 @@ class Moderation(commands.Cog):
     # ---------------------------------------------------------
     # COMANDO SETUP VC & INTERFACE
     # ---------------------------------------------------------
-  @commands.command(name="setupvc", aliases=["setupinterface"])
+    @commands.command(name="setupvc", aliases=["setupinterface"])
     @commands.has_permissions(administrator=True)
     async def setup_vc(self, ctx):
         # Primero eliminamos el mensaje del comando si es posible
