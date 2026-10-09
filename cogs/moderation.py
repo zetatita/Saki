@@ -597,6 +597,18 @@ class Moderation(commands.Cog):
             embed = discord.Embed(description="### **Comando: hardban**\n\nBanea de forma permanente y registra en lista negra.\n\n```text\nSintaxis: ,hb <usuario> [razón]\n         ,hb list\n```", color=0x1e1f22)
             return await ctx.reply(embed=embed, mention_author=False)
 
+        # Verificación de Administrador del Antinuke
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute("SELECT 1 FROM antinuke_admins WHERE guild_id = ? AND user_id = ?", (ctx.guild.id, ctx.author.id)) as cursor:
+                is_an_admin = await cursor.fetchone()
+
+        if not is_an_admin and ctx.author.id != ctx.guild.owner_id:
+            embed = discord.Embed(
+                description=f"⚠️ {ctx.author.mention}: Debes ser **administrador del antinuke** para ejecutar este comando.",
+                color=0x2b2d31
+            )
+            return await ctx.reply(embed=embed, mention_author=False)
+
         await ctx.guild.ban(user, reason=f"[Hardban por {ctx.author}]: {reason}", delete_message_days=7)
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("""
@@ -611,7 +623,7 @@ class Moderation(commands.Cog):
             )
             await db.commit()
         await ctx.message.add_reaction("👍")
-
+        
     @hardban.command(name="list")
     @commands.has_permissions(ban_members=True)
     async def hardban_list(self, ctx):
