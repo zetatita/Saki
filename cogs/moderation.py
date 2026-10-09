@@ -688,14 +688,8 @@ class Moderation(commands.Cog):
         embed = discord.Embed(description=f"✅ {ctx.author.mention}: Se aplicó **visibilidad** a {target.mention}.", color=0x2ecc71)
         await ctx.reply(embed=embed, mention_author=False)
 
-    @commands.command(name="nuke")
-    @commands.has_permissions(manage_channels=True)
-    async def nuke(self, ctx, channel: discord.abc.GuildChannel = None):
-        target = channel or ctx.channel
-        pos = target.position
-        new_channel = await target.clone(reason=f"Nuke ejecutado por {ctx.author}")
-        await target.delete(reason=f"Nuke ejecutado por {ctx.author}")
-        await new_channel.edit(position=pos)
+   
+    
 
     # ---------------------------------------------------------
     # REGLAS Y PREMIUM (CONSERVADOS ÍNTEGRAMENTE)
