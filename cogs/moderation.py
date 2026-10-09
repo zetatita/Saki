@@ -299,9 +299,10 @@ class Moderation(commands.Cog):
     # ---------------------------------------------------------
     # COMANDO SETUP VC & INTERFACE
     # ---------------------------------------------------------
-    @commands.command(name="setupvc", aliases=["setupinterface"])
+  @commands.command(name="setupvc", aliases=["setupinterface"])
     @commands.has_permissions(administrator=True)
     async def setup_vc(self, ctx):
+        # Primero eliminamos el mensaje del comando si es posible
         try:
             await ctx.message.delete()
         except discord.HTTPException:
@@ -312,33 +313,43 @@ class Moderation(commands.Cog):
             guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=False)
         }
 
-        category = await guild.create_category("VC", reason="Configuración de canales de voz y panel")
-        text_channel = await guild.create_text_channel("📝 ┃ interface", category=category, overwrites=overwrites)
-        voice_channel = await guild.create_voice_channel("➕ ┃ jtc", category=category)
+        try:
+            # 1. Crear categoría y canales
+            category = await guild.create_category("VC", reason="Configuración de canales de voz y panel")
+            text_channel = await guild.create_text_channel("📝 ┃ interface", category=category, overwrites=overwrites)
+            voice_channel = await guild.create_voice_channel("➕ ┃ jtc", category=category)
 
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS jtc_config (
-                    guild_id INTEGER PRIMARY KEY, category_id INTEGER, jtc_channel_id INTEGER
+            # 2. Guardar en la base de datos
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS jtc_config (
+                        guild_id INTEGER PRIMARY KEY, category_id INTEGER, jtc_channel_id INTEGER
+                    )
+                """)
+                await db.execute(
+                    "INSERT INTO jtc_config (guild_id, category_id, jtc_channel_id) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET category_id = ?, jtc_channel_id = ?",
+                    (guild.id, category.id, voice_channel.id, category.id, voice_channel.id)
                 )
-            """)
-            await db.execute(
-                "INSERT INTO jtc_config (guild_id, category_id, jtc_channel_id) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET category_id = ?, jtc_channel_id = ?",
-                (guild.id, category.id, voice_channel.id, category.id, voice_channel.id)
-            )
-            await db.commit()
+                await db.commit()
 
-        embed = discord.Embed(
-            description=(
-                "Puede utilizar esta interfaz para administrar su canal de voz.\n\n"
-                "¡También puede utilizar los comandos con barra diagonal `/vc`!"
-            ),
-            color=0x2b2d31
-        )
-        embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.display_avatar.url)
-        view = VoiceControlView()
-        await text_channel.send(embed=embed, view=view)
-        await ctx.reply(f"✅ ¡Sistema de canales de voz e interfaz configurado correctamente en la categoría {category.name}!", delete_after=10)
+            # 3. Enviar el embed con la vista de botones
+            embed = discord.Embed(
+                description=(
+                    "Puede utilizar esta interfaz para administrar su canal de voz.\n\n"
+                    "¡También puede utilizar los comandos con barra diagonal `/vc`!"
+                ),
+                color=0x2b2d31
+            )
+            embed.set_author(name=self.bot.user.name, icon_url=self.bot.user.display_avatar.url)
+            view = VoiceControlView()
+            
+            await text_channel.send(embed=embed, view=view)
+            await ctx.send(f"✅ ¡Sistema de canales de voz e interfaz configurado correctamente en la categoría {category.name}!", delete_after=10)
+
+        except Exception as e:
+            # Si ocurre cualquier error, lo imprimimos en la consola de tu terminal para saber exacto qué falló
+            print(f"❌ Error detallado en setupvc: {e}")
+            await ctx.send(f"❌ Ocurrió un error al configurar el panel: `{e}`", delete_after=15)
 
     # ---------------------------------------------------------
     # ROLES Y COMANDO ,r
