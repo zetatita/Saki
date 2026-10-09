@@ -155,17 +155,17 @@ class VoiceControlView(discord.ui.View):
         await channel.set_permissions(interaction.guild.default_role, connect=True)
         await interaction.response.send_message("🔓 Canal de voz desbloqueado.", ephemeral=True)
 
-    @discord.ui.button(emoji="👁️‍🗨️", style=discord.ButtonStyle.secondary, custom_id="vc_hide", row=0)
+    @discord.ui.button(emoji="🙈", style=discord.ButtonStyle.secondary, custom_id="vc_hide", row=0)
     async def hide_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.user.voice.channel
         await channel.set_permissions(interaction.guild.default_role, view_channel=False)
-        await interaction.response.send_message("👁️‍🗨️ Canal de voz ocultado.", ephemeral=True)
+        await interaction.response.send_message("🙈 Canal de voz ocultado.", ephemeral=True)
 
-    @discord.ui.button(emoji="👁️", style=discord.ButtonStyle.secondary, custom_id="vc_unhide", row=0)
+    @discord.ui.button(emoji="👀", style=discord.ButtonStyle.secondary, custom_id="vc_unhide", row=0)
     async def unhide_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.user.voice.channel
         await channel.set_permissions(interaction.guild.default_role, view_channel=True)
-        await interaction.response.send_message("👁️ Canal de voz visible.", ephemeral=True)
+        await interaction.response.send_message("👀 Canal de voz visible.", ephemeral=True)
 
     @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, custom_id="vc_limit", row=1)
     async def limit_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -193,7 +193,6 @@ class Moderation(commands.Cog):
         self.bot = bot
         self.snipes = {}
         self.active_jtc = {}
-
     # ---------------------------------------------------------
     # LISTENERS GLOBALES
     # ---------------------------------------------------------
