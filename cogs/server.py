@@ -58,7 +58,7 @@ class ConfigScriptModal(discord.ui.Modal):
 
 
 # =========================================================
-# PANEL DE CONFIGURACIÓN INTERACTIVO (GREED STYLE)
+# PANEL DE CONFIGURACIÓN INTERACTIVO (GREED STYLE CORREGIDO)
 # =========================================================
 class ConfigPanelView(discord.ui.View):
     def __init__(self, ctx, system_type: str):
@@ -66,6 +66,9 @@ class ConfigPanelView(discord.ui.View):
         self.ctx = ctx
         self.system_type = system_type
         self.table = "welcomes" if system_type == "welcome" else ("goodbyes" if system_type == "goodbye" else "boosts")
+        
+        # Añadir el selector de canales de texto de manera segura
+        self.add_item(ChannelSelectMenu(self.table, self))
 
     async def refresh_panel(self, interaction: discord.Interaction):
         async with aiosqlite.connect(DB_NAME) as db:
@@ -81,29 +84,9 @@ class ConfigPanelView(discord.ui.View):
         embed.add_field(name="Channel", value=channel_mention, inline=True)
         embed.add_field(name="Status", value=status_text, inline=True)
         embed.add_field(name="Auto-delete", value="`Off`", inline=True)
-        embed.add_field(name="Message", value=f"```text\n{msg[:500]}\n```", inline=False)
+        embed.add_field(name="Message", value=f"```text\n{str(msg)[:500]}\n```", inline=False)
 
         await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.select(cls=discord.ui.ChannelSelect, channel_types=[discord.ChannelType.text], placeholder="Selecciona un canal...", row=0)
-    async def select_channel(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
-        selected_ch = select.values[0]
-        default_msg = "• Please read our rules.\n• Boost for perks.\n• Invite your friends!"
-
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute(f"""
-                CREATE TABLE IF NOT EXISTS {self.table} (
-                    guild_id INTEGER PRIMARY KEY, channel_id INTEGER, status INTEGER DEFAULT 1, message TEXT
-                )
-            """)
-            await db.execute(f"""
-                INSERT INTO {self.table} (guild_id, channel_id, status, message)
-                VALUES (?, ?, 1, ?)
-                ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, status = 1
-            """, (interaction.guild.id, selected_ch.id, default_msg, selected_ch.id))
-            await db.commit()
-
-        await self.refresh_panel(interaction)
 
     @discord.ui.button(label="Set message", style=discord.ButtonStyle.secondary, row=1)
     async def set_message(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -160,6 +143,32 @@ class ConfigPanelView(discord.ui.View):
         await self.refresh_panel(interaction)
 
 
+class ChannelSelectMenu(discord.ui.ChannelSelect):
+    def __init__(self, table_name: str, parent_view: ConfigPanelView):
+        super().__init__(placeholder="Selecciona un canal...", channel_types=[discord.ChannelType.text], row=0)
+        self.table_name = table_name
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_ch = self.values[0]
+        default_msg = "• Please read our rules.\n• Boost for perks.\n• Invite your friends!"
+
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute(f"""
+                CREATE TABLE IF NOT EXISTS {self.table_name} (
+                    guild_id INTEGER PRIMARY KEY, channel_id INTEGER, status INTEGER DEFAULT 1, message TEXT
+                )
+            """)
+            await db.execute(f"""
+                INSERT INTO {self.table_name} (guild_id, channel_id, status, message)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, status = 1
+            """, (interaction.guild.id, selected_ch.id, default_msg, selected_ch.id))
+            await db.commit()
+
+        await self.parent_view.refresh_panel(interaction)
+
+
 class Server(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -199,7 +208,7 @@ class Server(commands.Cog):
         await ctx.send(embed=embed)
 
     # ---------------------------------------------------------
-    # SISTEMA DE BIENVENIDA (WELCOME) CON PANEL INTERACTIVO
+    # SISTEMA DE BIENVENIDA (WELCOME)
     # ---------------------------------------------------------
     @commands.group(name="welcome", aliases=["wlc"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
@@ -223,7 +232,7 @@ class Server(commands.Cog):
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
     # ---------------------------------------------------------
-    # SISTEMA DE DESPEDIDAS (GOODBYE) CON PANEL INTERACTIVO
+    # SISTEMA DE DESPEDIDAS (GOODBYE)
     # ---------------------------------------------------------
     @commands.group(name="goodbye", aliases=["despedida"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
@@ -247,7 +256,7 @@ class Server(commands.Cog):
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
     # ---------------------------------------------------------
-    # SISTEMA DE BOOSTS (BOOSTMSG) CON PANEL INTERACTIVO
+    # SISTEMA DE BOOSTS (BOOSTMSG)
     # ---------------------------------------------------------
     @commands.group(name="boostmsg", aliases=["boost"], invoke_without_command=True)
     @commands.has_permissions(administrator=True)
