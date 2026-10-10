@@ -519,13 +519,114 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             pass
 
+    @commands.command(name="c", aliases=["clear", "purge"])
+    @commands.has_permissions(manage_messages=True)
+    async def clear(self, ctx, limit: int = None):
+        if limit is None:
+            embed = discord.Embed(
+                description="### **Command: clear**\n\nDeletes a specified number of messages\n\n```text\nSyntax: ,c (amount)\nExample: ,c 10\n```",
+                color=0x1e1f22
+            )
+            embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
+            return await ctx.reply(embed=embed, mention_author=False)
+
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
+        deleted = await ctx.channel.purge(limit=limit)
+        msg = await ctx.send(f"✅ Se han borrado **{len(deleted)}** mensajes.", delete_after=4)
+
     @commands.command(name="ban")
     @commands.has_permissions(ban_members=True)
-    async def ban(self, ctx, user: discord.User = None, *, reason: str = "No especificada"):
-        if user is None:
-            return await ctx.reply("Sintaxis: `,ban <usuario> [razón]`", mention_author=False)
-        await ctx.guild.ban(user, reason=f"[Ban por {ctx.author}]: {reason}")
-        await ctx.message.add_reaction("👍")
+    async def ban(self, ctx, user_arg: str = None, *, reason: str = "No especificada"):
+        if user_arg is None:
+            embed = discord.Embed(
+                description="### **Command: ban**\n\nBans the mentioned user\n\n```text\nSyntax: ,ban (user) (reason)\nExample: ,ban derek spamming\n```",
+                color=0x1e1f22
+            )
+            embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
+            return await ctx.reply(embed=embed, mention_author=False)
+
+        target_user = None
+        if user_arg.startswith("<@") and user_arg.endswith(">"):
+            m_id = re.findall(r"[0-9]+", user_arg)
+            if m_id:
+                try:
+                    target_user = await self.bot.fetch_user(int(m_id[0]))
+                except Exception:
+                    pass
+        elif user_arg.isdigit():
+            try:
+                target_user = await self.bot.fetch_user(int(user_arg))
+            except Exception:
+                pass
+        else:
+            target_user = discord.utils.get(ctx.guild.members, name=user_arg)
+
+        if not target_user:
+            return await ctx.reply("❌ No se pudo encontrar al usuario especificado.", mention_author=False)
+
+        try:
+            await ctx.guild.ban(target_user, reason=f"[Ban por {ctx.author}]: {reason}")
+            await ctx.message.add_reaction("👍")
+        except Exception as e:
+            await ctx.reply(f"❌ No se pudo banear al usuario: `{e}`", mention_author=False)
+
+    @commands.command(name="timeout", aliases=["mute"])
+    @commands.has_permissions(moderate_members=True)
+    async def timeout(self, ctx, member: discord.Member = None, duration: str = None, *, reason: str = "No especificada"):
+        if member is None or duration is None:
+            embed = discord.Embed(
+                description="### **Command: timeout**\n\nMutes the provided member using Discord's timeout feature\n\n```text\nSyntax: ,timeout (member) (duration) (reason)\nExample: ,timeout @user 10m Spamming\n```",
+                color=0x1e1f22
+            )
+            embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
+            return await ctx.reply(embed=embed, mention_author=False)
+
+        unit = duration[-1].lower()
+        val = duration[:-1]
+        
+        if not val.isdigit():
+            return await ctx.reply("❌ Duración inválida. Usa un número seguido de s, m, h o d (Ej: `10m`, `1h`).", mention_author=False)
+        
+        amount = int(val)
+        delta = None
+        
+        if unit == 's':
+            delta = datetime.timedelta(seconds=amount)
+        elif unit == 'm':
+            delta = datetime.timedelta(minutes=amount)
+        elif unit == 'h':
+            delta = datetime.timedelta(hours=amount)
+        elif unit == 'd':
+            delta = datetime.timedelta(days=amount)
+        else:
+            return await ctx.reply("❌ Unidad de tiempo no reconocida. Usa `s`, `m`, `h` o `d`.", mention_author=False)
+
+        try:
+            await member.timeout(delta, reason=f"[Timeout por {ctx.author}]: {reason}")
+            await ctx.message.add_reaction("👍")
+        except Exception as e:
+            await ctx.reply(f"❌ No se pudo aplicar el timeout: `{e}`", mention_author=False)
+
+    @commands.command(name="untimeout", aliases=["unmute"])
+    @commands.has_permissions(moderate_members=True)
+    async def untimeout(self, ctx, member: discord.Member = None, *, reason: str = "No especificada"):
+        if member is None:
+            embed = discord.Embed(
+                description="### **Command: untimeout**\n\nRemoves the timeout from the provided member\n\n```text\nSyntax: ,untimeout (member) (reason)\nExample: ,untimeout @user Apelled\n```",
+                color=0x1e1f22
+            )
+            embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
+            return await ctx.reply(embed=embed, mention_author=False)
+
+        try:
+            await member.timeout(None, reason=f"[Untimeout por {ctx.author}]: {reason}")
+            await ctx.message.add_reaction("👍")
+        except Exception as e:
+            await ctx.reply(f"❌ No se pudo quitar el timeout: `{e}`", mention_author=False)
 
     # ---------------------------------------------------------
     # HARDBANS Y LISTA HARDBAN
@@ -599,21 +700,50 @@ class Moderation(commands.Cog):
 
     @commands.command(name="unban")
     @commands.has_permissions(ban_members=True)
-    async def unban(self, ctx, user: discord.User = None, *, reason: str = "No especificada"):
-        if user is None:
-            return await ctx.reply("Sintaxis: `,unban <ID_o_Usuario> [razón]`", mention_author=False)
+    async def unban(self, ctx, user_arg: str = None, *, reason: str = "No especificada"):
+        if user_arg is None:
+            embed = discord.Embed(
+                description="### **Command: unban**\n\nUnbans the mentioned user\n\n```text\nSyntax: ,unban (user) (reason)\nExample: ,unban derek Forgiven\n```",
+                color=0x1e1f22
+            )
+            embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
+            return await ctx.reply(embed=embed, mention_author=False)
+
+        target_user = None
+        if user_arg.startswith("<@") and user_arg.endswith(">"):
+            m_id = re.findall(r"[0-9]+", user_arg)
+            if m_id:
+                try:
+                    target_user = await self.bot.fetch_user(int(m_id[0]))
+                except Exception:
+                    pass
+        elif user_arg.isdigit():
+            try:
+                target_user = await self.bot.fetch_user(int(user_arg))
+            except Exception:
+                pass
+
+        if not target_user:
+            banned_entries = await ctx.guild.bans()
+            for entry in banned_entries:
+                if entry.user.name.lower() == user_arg.lower():
+                    target_user = entry.user
+                    break
+
+        if not target_user:
+            return await ctx.reply("❌ No se pudo encontrar al usuario para desbanear.", mention_author=False)
 
         is_hardbanned = False
         async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT reason FROM hardbans WHERE guild_id = ? AND user_id = ?", (ctx.guild.id, user.id)) as cursor:
+            async with db.execute("SELECT reason FROM hardbans WHERE guild_id = ? AND user_id = ?", (ctx.guild.id, target_user.id)) as cursor:
                 if await cursor.fetchone():
                     is_hardbanned = True
 
-        warning_text = f"⚠️ {ctx.author.mention}: User **{user.name}** is hardbanned. Are you sure you would like to undo this?" if is_hardbanned else f"⚠️ {ctx.author.mention}: Are you sure you want to unban **{user.name}**?"
+        warning_text = f"⚠️ {ctx.author.mention}: User **{target_user.name}** is hardbanned. Are you sure you would like to undo this?" if is_hardbanned else f"⚠️ {ctx.author.mention}: Are you sure you want to unban **{target_user.name}**?"
         embed_confirm = discord.Embed(description=warning_text, color=0x2b2d31)
-        view = UnbanConfirmView(ctx, user, reason)
+        view = UnbanConfirmView(ctx, target_user, reason)
         view.message = await ctx.reply(embed=embed_confirm, view=view, mention_author=False)
-
+        
     @commands.command(name="lock")
     @commands.has_permissions(manage_channels=True)
     async def lock(self, ctx, channel: discord.TextChannel = None):
