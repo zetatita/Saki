@@ -304,28 +304,39 @@ class Moderation(commands.Cog):
             """)
             async with db.execute("SELECT category_id, jtc_channel_id FROM jtc_config WHERE guild_id = ?", (member.guild.id,)) as cursor:
                 row = await cursor.fetchone()
-                if row:
-                    cat_id, jtc_ch_id = row
-                    
-                    # Crear canal cuando entra al canal principal de JTC
-                    if after.channel and after.channel.id == jtc_ch_id:
-                        category = member.guild.get_channel(cat_id)
-                        new_vc = await member.guild.create_voice_channel(
-                            name=f"🔊 ┃ {member.name}",
-                            category=category,
-                            reason=f"Canal temporal JTC de {member}"
-                        )
-                        await member.move_to(new_vc)
-                        self.active_jtc[new_vc.id] = member.id
 
-                    # Eliminar canal temporal automáticamente cuando se queda sin miembros
-                    if before.channel and before.channel.id in self.active_jtc:
-                        if len(before.channel.members) == 0:
-                            try:
-                                await before.channel.delete(reason="Canal temporal JTC vacío")
-                            except Exception:
-                                pass
-                            self.active_jtc.pop(before.channel.id, None)
+        jtc_ch_id = None
+        cat_id = None
+
+        if row:
+            cat_id, jtc_ch_id = row
+
+        # 1. Crear canal si entra al JTC configurado O si el canal al que entra se llama "➕ ┃ jtc"
+        is_jtc_channel = (jtc_ch_id and after.channel and after.channel.id == jtc_ch_id) or (after.channel and "jtc" in after.channel.name.lower())
+
+        if is_jtc_channel:
+            # Si no hay categoría guardada, usamos la del canal actual o la primera disponible
+            category = member.guild.get_channel(cat_id) if cat_id else after.channel.category
+            
+            try:
+                new_vc = await member.guild.create_voice_channel(
+                    name=f"🔊 ┃ {member.name}",
+                    category=category,
+                    reason=f"Canal temporal JTC de {member}"
+                )
+                await member.move_to(new_vc)
+                self.active_jtc[new_vc.id] = member.id
+            except Exception as e:
+                print(f"❌ Error al crear el canal JTC: {e}")
+
+        # 2. Eliminar canal temporal automáticamente cuando se queda sin miembros
+        if before.channel and before.channel.id in self.active_jtc:
+            if len(before.channel.members) == 0:
+                try:
+                    await before.channel.delete(reason="Canal temporal JTC vacío")
+                except Exception:
+                    pass
+                self.active_jtc.pop(before.channel.id, None)
     # ---------------------------------------------------------
     # COMANDO SETUP VC & INTERFACE
     # ---------------------------------------------------------
