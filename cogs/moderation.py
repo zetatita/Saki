@@ -647,7 +647,7 @@ class Server(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def boostmsg_remove(self, ctx):
         async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("DELETE FROM boosts WHERE guild_id = ?", (ctx.guild.id,))
+            await db.execute("DELETE FROM boosts WHERE guild_id = ?", (ctx.guild.id,))
             await db.commit()
         await ctx.message.add_reaction("👍")
 
@@ -963,4 +963,3 @@ class Server(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
-
