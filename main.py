@@ -21,6 +21,7 @@ initial_extensions = [
     'cogs.embeds',
     'cogs.jail',
     'cogs.utility',
+    'cogs.help',
 ]
 
 @bot.event
