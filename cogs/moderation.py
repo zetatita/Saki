@@ -294,7 +294,38 @@ class Moderation(commands.Cog):
             "created_at": message.created_at,
             "attachment": message.attachments[0].url if message.attachments else None
         }
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS jtc_config (
+                    guild_id INTEGER PRIMARY KEY, category_id INTEGER, jtc_channel_id INTEGER
+                )
+            """)
+            async with db.execute("SELECT category_id, jtc_channel_id FROM jtc_config WHERE guild_id = ?", (member.guild.id,)) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    cat_id, jtc_ch_id = row
+                    
+                    # Crear canal cuando entra al canal principal de JTC
+                    if after.channel and after.channel.id == jtc_ch_id:
+                        category = member.guild.get_channel(cat_id)
+                        new_vc = await member.guild.create_voice_channel(
+                            name=f"🔊 ┃ {member.name}",
+                            category=category,
+                            reason=f"Canal temporal JTC de {member}"
+                        )
+                        await member.move_to(new_vc)
+                        self.active_jtc[new_vc.id] = member.id
 
+                    # Eliminar canal temporal automáticamente cuando se queda sin miembros
+                    if before.channel and before.channel.id in self.active_jtc:
+                        if len(before.channel.members) == 0:
+                            try:
+                                await before.channel.delete(reason="Canal temporal JTC vacío")
+                            except Exception:
+                                pass
+                            self.active_jtc.pop(before.channel.id, None)
     # ---------------------------------------------------------
     # COMANDO SETUP VC & INTERFACE
     # ---------------------------------------------------------
