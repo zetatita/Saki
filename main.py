@@ -10,6 +10,7 @@ intents.members = True
 intents.presences = True
 
 bot = commands.Bot(command_prefix=DEFAULT_PREFIX, intents=intents)
+bot.remove_command("help")  # <--- Agrega esto aquí
 
 initial_extensions = [
     'cogs.server',
