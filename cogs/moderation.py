@@ -188,43 +188,24 @@ class VoiceControlView(discord.ui.View):
         await interaction.response.send_message("ℹ️ Usa `/vc name <nombre>` para cambiar el nombre.", ephemeral=True)
 
 
-# =========================================================
-# VISTA DE BIENVENIDA (Botones de enlace)
-# =========================================================
-class WelcomeView(discord.ui.View):
-    def __init__(self, guild_id: int):
-        super().__init__(timeout=None)
-        chat_url = f"https://discord.com/channels/{guild_id}"
-        vc_url = f"https://discord.com/channels/{guild_id}"
-        
-        self.add_item(discord.ui.Button(label="Chat Here", url=chat_url, style=discord.ButtonStyle.link))
-        self.add_item(discord.ui.Button(label="Create Saki VC", url=vc_url, style=discord.ButtonStyle.link))
-
-
-# =========================================================
-# CLASE PRINCIPAL DE MODERACIÓN Y SERVIDOR
-# =========================================================
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.snipes = {}
         self.active_jtc = {}
-
     # ---------------------------------------------------------
     # LISTENERS GLOBALES
     # ---------------------------------------------------------
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        guild = member.guild
         async with aiosqlite.connect(DB_NAME) as db:
-            # 1. Comprobación de Hardbans
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS hardbans (
                     guild_id INTEGER, user_id INTEGER, reason TEXT, moderator_id INTEGER,
                     banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (guild_id, user_id)
                 )
             """)
-            async with db.execute("SELECT reason FROM hardbans WHERE guild_id = ? AND user_id = ?", (guild.id, member.id)) as cursor:
+            async with db.execute("SELECT reason FROM hardbans WHERE guild_id = ? AND user_id = ?", (member.guild.id, member.id)) as cursor:
                 row = await cursor.fetchone()
                 if row:
                     try:
@@ -232,60 +213,44 @@ class Moderation(commands.Cog):
                     except discord.HTTPException:
                         pass
 
-            # 2. Sistema de Bienvenidas
             await db.execute("CREATE TABLE IF NOT EXISTS welcomes (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-            async with db.execute("SELECT channel_id, message FROM welcomes WHERE guild_id = ?", (guild.id,)) as cursor:
+            async with db.execute("SELECT channel_id, message FROM welcomes WHERE guild_id = ?", (member.guild.id,)) as cursor:
                 w_row = await cursor.fetchone()
                 if w_row:
-                    ch_id, custom_message = w_row
-                    channel = guild.get_channel(ch_id)
+                    ch_id, text = w_row
+                    channel = member.guild.get_channel(ch_id)
                     if channel:
-                        content = custom_message.replace("{user}", member.mention).replace("{server}", guild.name).replace("{members}", str(guild.member_count))
-                        embed = discord.Embed(
-                            description=(
-                                f"We now have **{guild.member_count}** members!\n\n"
-                                "• Please read our rules.\n"
-                                "• Boost for perks.\n"
-                                "• Invite your friends!"
-                            ),
-                            color=0x2b2d31
-                        )
-                        if guild.icon:
-                            embed.set_author(name=guild.name, icon_url=guild.icon.url)
-                        else:
-                            embed.set_author(name=guild.name)
-
-                        view = WelcomeView(guild.id)
-                        await channel.send(content=content, embed=embed, view=view)
+                        formatted_text = text.replace("{user}", member.mention).replace("{server}", member.guild.name)
+                        embed = discord.Embed(description=formatted_text, color=0x2b2d31)
+                        embed.set_author(name=f"Welcome, @{member.name}!", icon_url=member.display_avatar.url)
+                        await channel.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
-        guild = member.guild
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("CREATE TABLE IF NOT EXISTS goodbyes (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-            async with db.execute("SELECT channel_id, message FROM goodbyes WHERE guild_id = ?", (guild.id,)) as cursor:
+            async with db.execute("SELECT channel_id, message FROM goodbyes WHERE guild_id = ?", (member.guild.id,)) as cursor:
                 g_row = await cursor.fetchone()
                 if g_row:
                     ch_id, text = g_row
-                    channel = guild.get_channel(ch_id)
+                    channel = member.guild.get_channel(ch_id)
                     if channel:
-                        formatted_text = text.replace("{user}", member.name).replace("{server}", guild.name)
+                        formatted_text = text.replace("{user}", str(member)).replace("{server}", member.guild.name)
                         embed = discord.Embed(description=formatted_text, color=0x2b2d31)
                         await channel.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.premium_since is None and after.premium_since is not None:
-            guild = after.guild
             async with aiosqlite.connect(DB_NAME) as db:
                 await db.execute("CREATE TABLE IF NOT EXISTS boosts (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-                async with db.execute("SELECT channel_id, message FROM boosts WHERE guild_id = ?", (guild.id,)) as cursor:
+                async with db.execute("SELECT channel_id, message FROM boosts WHERE guild_id = ?", (after.guild.id,)) as cursor:
                     b_row = await cursor.fetchone()
                     if b_row:
                         ch_id, text = b_row
-                        channel = guild.get_channel(ch_id)
+                        channel = after.guild.get_channel(ch_id)
                         if channel:
-                            formatted_text = text.replace("{user}", after.name).replace("{server}", guild.name)
+                            formatted_text = text.replace("{user}", after.mention).replace("{server}", after.guild.name)
                             embed = discord.Embed(description=formatted_text, color=0xff73fa)
                             await channel.send(embed=embed)
 
@@ -336,6 +301,7 @@ class Moderation(commands.Cog):
     @commands.command(name="setupvc", aliases=["setupinterface"])
     @commands.has_permissions(administrator=True)
     async def setup_vc(self, ctx):
+        # Primero eliminamos el mensaje del comando si es posible
         try:
             await ctx.message.delete()
         except discord.HTTPException:
@@ -347,10 +313,12 @@ class Moderation(commands.Cog):
         }
 
         try:
+            # 1. Crear categoría y canales
             category = await guild.create_category("VC", reason="Configuración de canales de voz y panel")
             text_channel = await guild.create_text_channel("📝 ┃ interface", category=category, overwrites=overwrites)
             voice_channel = await guild.create_voice_channel("➕ ┃ jtc", category=category)
 
+            # 2. Guardar en la base de datos
             async with aiosqlite.connect(DB_NAME) as db:
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS jtc_config (
@@ -363,6 +331,7 @@ class Moderation(commands.Cog):
                 )
                 await db.commit()
 
+            # 3. Enviar el embed con la vista de botones
             embed = discord.Embed(
                 description=(
                     "Puede utilizar esta interfaz para administrar su canal de voz.\n\n"
@@ -377,98 +346,9 @@ class Moderation(commands.Cog):
             await ctx.send(f"✅ ¡Sistema de canales de voz e interfaz configurado correctamente en la categoría {category.name}!", delete_after=10)
 
         except Exception as e:
+            # Si ocurre cualquier error, lo imprimimos en la consola de tu terminal para saber exacto qué falló
             print(f"❌ Error detallado en setupvc: {e}")
             await ctx.send(f"❌ Ocurrió un error al configurar el panel: `{e}`", delete_after=15)
-
-    # ---------------------------------------------------------
-    # SISTEMAS DE BIENVENIDA, GOODBYE Y BOOST (COMANDOS)
-    # ---------------------------------------------------------
-    @commands.group(name="welcome", invoke_without_command=True)
-    @commands.has_permissions(administrator=True)
-    async def welcome(self, ctx):
-        embed = discord.Embed(
-            description="### **Sistema de Bienvenidas**\n\n```text\nSintaxis: ,welcome set <canal> <mensaje>\n         ,welcome remove\n```",
-            color=0x1e1f22
-        )
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @welcome.command(name="set")
-    @commands.has_permissions(administrator=True)
-    async def welcome_set(self, ctx, channel: discord.TextChannel, *, message: str):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("CREATE TABLE IF NOT EXISTS welcomes (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-            await db.execute(
-                "INSERT INTO welcomes (guild_id, channel_id, message) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, message = ?",
-                (ctx.guild.id, channel.id, message, channel.id, message)
-            )
-            await db.commit()
-        await ctx.message.add_reaction("👍")
-
-    @welcome.command(name="remove", aliases=["delete"])
-    @commands.has_permissions(administrator=True)
-    async def welcome_remove(self, ctx):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM welcomes WHERE guild_id = ?", (ctx.guild.id,))
-            await db.commit()
-        await ctx.message.add_reaction("👍")
-
-    @commands.group(name="goodbye", aliases=["despedida"], invoke_without_command=True)
-    @commands.has_permissions(administrator=True)
-    async def goodbye(self, ctx):
-        embed = discord.Embed(
-            description="### **Sistema de Despedidas**\n\n```text\nSintaxis: ,goodbye set <canal> <mensaje>\n         ,goodbye remove\n```",
-            color=0x1e1f22
-        )
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @goodbye.command(name="set")
-    @commands.has_permissions(administrator=True)
-    async def goodbye_set(self, ctx, channel: discord.TextChannel, *, message: str):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("CREATE TABLE IF NOT EXISTS goodbyes (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-            await db.execute(
-                "INSERT INTO goodbyes (guild_id, channel_id, message) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, message = ?",
-                (ctx.guild.id, channel.id, message, channel.id, message)
-            )
-            await db.commit()
-        await ctx.message.add_reaction("👍")
-
-    @goodbye.command(name="remove", aliases=["delete"])
-    @commands.has_permissions(administrator=True)
-    async def goodbye_remove(self, ctx):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM goodbyes WHERE guild_id = ?", (ctx.guild.id,))
-            await db.commit()
-        await ctx.message.add_reaction("👍")
-
-    @commands.group(name="boostmsg", aliases=["boost"], invoke_without_command=True)
-    @commands.has_permissions(administrator=True)
-    async def boostmsg(self, ctx):
-        embed = discord.Embed(
-            description="### **Sistema de Mensajes de Boost**\n\n```text\nSintaxis: ,boostmsg set <canal> <mensaje>\n         ,boostmsg remove\n```",
-            color=0x1e1f22
-        )
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @boostmsg.command(name="set")
-    @commands.has_permissions(administrator=True)
-    async def boostmsg_set(self, ctx, channel: discord.TextChannel, *, message: str):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("CREATE TABLE IF NOT EXISTS boosts (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-            await db.execute(
-                "INSERT INTO boosts (guild_id, channel_id, message) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, message = ?",
-                (ctx.guild.id, channel.id, message, channel.id, message)
-            )
-            await db.commit()
-        await ctx.message.add_reaction("👍")
-
-    @boostmsg.command(name="remove", aliases=["delete"])
-    @commands.has_permissions(administrator=True)
-    async def boostmsg_remove(self, ctx):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM boosts WHERE guild_id = ?", (ctx.guild.id,))
-            await db.commit()
-        await ctx.message.add_reaction("👍")
 
     # ---------------------------------------------------------
     # ROLES Y COMANDO ,r
@@ -602,6 +482,193 @@ class Moderation(commands.Cog):
 
         await ctx.message.add_reaction("👍" if moved_count > 0 else "❌")
 
+
+  
+    class WelcomeView(discord.ui.View):
+     def __init__(self, guild_id: int):
+        super().__init__(timeout=None)
+        chat_url = f"https://discord.com/channels/{guild_id}"
+        vc_url = f"https://discord.com/channels/{guild_id}"
+        
+        self.add_item(discord.ui.Button(label="Chat Here", url=chat_url, style=discord.ButtonStyle.link))
+        self.add_item(discord.ui.Button(label="Create Saki VC", url=vc_url, style=discord.ButtonStyle.link))
+
+
+# =========================================================
+# COMANDOS Y EVENTOS DE BIENVENIDA, GOODBYE Y BOOST
+# =========================================================
+class Server(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    # ---------------------------------------------------------
+    # SISTEMA DE BIENVENIDA
+    # ---------------------------------------------------------
+    @commands.group(name="welcome", invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    async def welcome(self, ctx):
+        embed = discord.Embed(
+            description="### **Sistema de Bienvenidas**\n\n```text\nSintaxis: ,welcome set <canal> <mensaje>\n         ,welcome remove\n```",
+            color=0x1e1f22
+        )
+        await ctx.reply(embed=embed, mention_author=False)
+
+    @welcome.command(name="set")
+    @commands.has_permissions(administrator=True)
+    async def welcome_set(self, ctx, channel: discord.TextChannel, *, message: str):
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("CREATE TABLE IF NOT EXISTS welcomes (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
+            await db.execute(
+                "INSERT INTO welcomes (guild_id, channel_id, message) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, message = ?",
+                (ctx.guild.id, channel.id, message, channel.id, message)
+            )
+            await db.commit()
+        await ctx.message.add_reaction("👍")
+
+    @welcome.command(name="remove", aliases=["delete"])
+    @commands.has_permissions(administrator=True)
+    async def welcome_remove(self, ctx):
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("DELETE FROM welcomes WHERE guild_id = ?", (ctx.guild.id,))
+            await db.commit()
+        await ctx.message.add_reaction("👍")
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        guild = member.guild
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute("SELECT channel_id, message FROM welcomes WHERE guild_id = ?", (guild.id,)) as cursor:
+                row = await cursor.fetchone()
+
+        if not row:
+            return
+
+        channel_id, custom_message = row
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            return
+
+        # Personaliza el mensaje con el usuario, servidor y total de miembros
+        content = custom_message.replace("{user}", member.mention).replace("{server}", guild.name).replace("{members}", str(guild.member_count))
+
+        embed = discord.Embed(
+            description=(
+                f"We now have **{guild.member_count}** members!\n\n"
+                "• Please read our rules.\n"
+                "• Boost for perks.\n"
+                "• Invite your friends!"
+            ),
+            color=0x2b2d31
+        )
+        
+        if guild.icon:
+            embed.set_author(name=guild.name, icon_url=guild.icon.url)
+        else:
+            embed.set_author(name=guild.name)
+
+        view = WelcomeView(guild.id)
+        await channel.send(content=content, embed=embed, view=view)
+        
+    # ---------------------------------------------------------
+    # SISTEMA DE DESPEDIDAS (GOODBYE)
+    # ---------------------------------------------------------
+    @commands.group(name="goodbye", aliases=["despedida"], invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    async def goodbye(self, ctx):
+        embed = discord.Embed(
+            description="### **Sistema de Despedidas**\n\n```text\nSintaxis: ,goodbye set <canal> <mensaje>\n         ,goodbye remove\n```",
+            color=0x1e1f22
+        )
+        await ctx.reply(embed=embed, mention_author=False)
+
+    @goodbye.command(name="set")
+    @commands.has_permissions(administrator=True)
+    async def goodbye_set(self, ctx, channel: discord.TextChannel, *, message: str):
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("CREATE TABLE IF NOT EXISTS goodbyes (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
+            await db.execute(
+                "INSERT INTO goodbyes (guild_id, channel_id, message) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, message = ?",
+                (ctx.guild.id, channel.id, message, channel.id, message)
+            )
+            await db.commit()
+        await ctx.message.add_reaction("👍")
+
+    @goodbye.command(name="remove", aliases=["delete"])
+    @commands.has_permissions(administrator=True)
+    async def goodbye_remove(self, ctx):
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("DELETE FROM goodbyes WHERE guild_id = ?", (ctx.guild.id,))
+            await db.commit()
+        await ctx.message.add_reaction("👍")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        guild = member.guild
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute("SELECT channel_id, message FROM goodbyes WHERE guild_id = ?", (guild.id,)) as cursor:
+                row = await cursor.fetchone()
+
+        if not row:
+            return
+
+        channel_id, custom_message = row
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            return
+
+        formatted_message = custom_message.replace("{user}", member.name).replace("{server}", guild.name)
+        await channel.send(formatted_message)
+
+    # ---------------------------------------------------------
+    # SISTEMA DE BOOSTS (BOOSTMSG)
+    # ---------------------------------------------------------
+    @commands.group(name="boostmsg", aliases=["boost"], invoke_without_command=True)
+    @commands.has_permissions(administrator=True)
+    async def boostmsg(self, ctx):
+        embed = discord.Embed(
+            description="### **Sistema de Mensajes de Boost**\n\n```text\nSintaxis: ,boostmsg set <canal> <mensaje>\n         ,boostmsg remove\n```",
+            color=0x1e1f22
+        )
+        await ctx.reply(embed=embed, mention_author=False)
+
+    @boostmsg.command(name="set")
+    @commands.has_permissions(administrator=True)
+    async def boostmsg_set(self, ctx, channel: discord.TextChannel, *, message: str):
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("CREATE TABLE IF NOT EXISTS boosts (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
+            await db.execute(
+                "INSERT INTO boosts (guild_id, channel_id, message) VALUES (?, ?, ?) ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, message = ?",
+                (ctx.guild.id, channel.id, message, channel.id, message)
+            )
+            await db.commit()
+        await ctx.message.add_reaction("👍")
+
+    @boostmsg.command(name="remove", aliases=["delete"])
+    @commands.has_permissions(administrator=True)
+    async def boostmsg_remove(self, ctx):
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute("DELETE FROM boosts WHERE guild_id = ?", (ctx.guild.id,))
+            await db.commit()
+        await ctx.message.add_reaction("👍")
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        if before.premium_since is None and after.premium_since is not None:
+            guild = after.guild
+            async with aiosqlite.connect(DB_NAME) as db:
+                async with db.execute("SELECT channel_id, message FROM boosts WHERE guild_id = ?", (guild.id,)) as cursor:
+                    row = await cursor.fetchone()
+
+            if not row:
+                return
+
+            channel_id, custom_message = row
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                return
+
+            formatted_message = custom_message.replace("{user}", after.name).replace("{server}", guild.name)
+            await channel.send(formatted_message)
     # ---------------------------------------------------------
     # UTILIDADES Y MODERACIÓN
     # ---------------------------------------------------------
@@ -758,8 +825,11 @@ class Moderation(commands.Cog):
         embed = discord.Embed(description=f"✅ {ctx.author.mention}: Se aplicó **visibilidad** a {target.mention}.", color=0x2ecc71)
         await ctx.reply(embed=embed, mention_author=False)
 
+   
+    
+
     # ---------------------------------------------------------
-    # REGLAS Y PREMIUM
+    # REGLAS Y PREMIUM (CONSERVADOS ÍNTEGRAMENTE)
     # ---------------------------------------------------------
     @commands.command(name="reglas", aliases=["rules"])
     @commands.has_permissions(administrator=True)
@@ -893,3 +963,4 @@ class Moderation(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
+
