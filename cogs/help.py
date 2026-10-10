@@ -15,7 +15,7 @@ class Help(commands.Cog):
     async def help_command(self, ctx):
         embed = discord.Embed(
             title="Ayuda y soporte",
-            description="Visita nuestro [servidor oficial](https://discord.gg/tu-servidor) para consultar los comandos y recibir ayuda.",
+            description="Visita nuestro [servidor oficial](https://discord.gg/s4F8ue775) para consultar los comandos y recibir ayuda.",
             color=0x1e1f22
         )
         view = HelpView()
