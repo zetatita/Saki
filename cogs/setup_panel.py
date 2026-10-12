@@ -74,10 +74,8 @@ class ConfigPanelView(discord.ui.View):
         table_map = {"welcome": "welcomes", "goodbye": "goodbyes", "boostmsg": "boosts"}
         self.table = table_map.get(system_type, "welcomes")
         
-        # Selector principal de canal de anuncios
         self.add_item(ChannelSelectMenu(self.table, self))
         
-        # Selectores adicionales solo para bienvenida
         if system_type == "welcome":
             self.add_item(ChatChannelSelect(self))
             self.add_item(VcChannelSelect(self))
@@ -122,7 +120,7 @@ class ConfigPanelView(discord.ui.View):
     @discord.ui.button(label="Disable", style=discord.ButtonStyle.danger, row=3)
     async def disable_system(self, interaction: discord.Interaction, button: discord.ui.Button):
         async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute(f"UPDATE {self.table} SET status = 0 WHERE guild_id = ?", (interaction.guild.id,))
+            await db.execute(f"UPDATE {self.table} SET status = 0 WHERE guild_id = ?", (interaction.guild.id,))
             await db.commit()
         await self.refresh_panel(interaction)
 
@@ -166,7 +164,7 @@ class ConfigPanelView(discord.ui.View):
     @discord.ui.button(label="Reset", style=discord.ButtonStyle.danger, row=3)
     async def reset_system(self, interaction: discord.Interaction, button: discord.ui.Button):
         async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute(f"DELETE FROM {self.table} WHERE guild_id = ?", (interaction.guild.id,))
+            await db.execute(f"DELETE FROM {self.table} WHERE guild_id = ?", (interaction.guild.id,))
             await db.commit()
         await self.refresh_panel(interaction)
 
