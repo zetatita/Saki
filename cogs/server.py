@@ -4,58 +4,6 @@ import time
 import aiosqlite
 from config import DB_NAME
 
-# =========================================================
-# VISTA DE BOTONES PARA ENLACES (BLEED STYLE)
-# =========================================================
-class BleedButtonsView(discord.ui.View):
-    def __init__(self, guild: discord.Guild):
-        super().__init__(timeout=None)
-        chat_url = f"https://discord.com/channels/{guild.id}"
-        vc_url = f"https://discord.com/channels/{guild.id}"
-
-        self.add_item(discord.ui.Button(label="Chat Here", url=chat_url, style=discord.ButtonStyle.link))
-        self.add_item(discord.ui.Button(label=f"Create {guild.name} VC", url=vc_url, style=discord.ButtonStyle.link))
-
-
-# =========================================================
-# MODAL PARA EDITAR EL MENSAJE / SCRIPT
-# =========================================================
-class ConfigScriptModal(discord.ui.Modal):
-    def __init__(self, parent_view, system_type: str, current_msg: str):
-        super().__init__(title=f"Configurar {system_type.capitalize()}")
-        self.parent_view = parent_view
-        self.system_type = system_type
-
-        self.script = discord.ui.TextInput(
-            label="Mensaje o script del embed",
-            style=discord.TextStyle.paragraph,
-            placeholder="Escribe el contenido del mensaje...",
-            default=current_msg,
-            required=True,
-            max_length=2000
-        )
-        self.add_item(self.script)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        table_name = "welcomes" if self.system_type == "welcome" else ("goodbyes" if self.system_type == "goodbye" else "boosts")
-        
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute(f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
-                    guild_id INTEGER PRIMARY KEY,
-                    channel_id INTEGER,
-                    status INTEGER DEFAULT 1,
-                    message TEXT
-                )
-            """)
-            await db.execute(
-                f"UPDATE {table_name} SET message = ? WHERE guild_id = ?",
-                (self.script.value, interaction.guild.id)
-            )
-            await db.commit()
-
-        await self.parent_view.refresh_panel(interaction)
-
 
 # =========================================================
 # PANEL DE CONFIGURACIÓN INTERACTIVO (GREED STYLE CORREGIDO)
