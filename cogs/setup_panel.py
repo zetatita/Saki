@@ -257,7 +257,7 @@ class SetupPanel(commands.Cog):
         if before.premium_since is None and after.premium_since is not None:
             guild = after.guild
             async with aiosqlite.connect(DB_NAME) as db:
-                async with db.execute("SELECT channel_id, status, message FROM boosts WHERE guild_id = ?,", (guild.id,)) as cursor:
+                async with db.execute("SELECT channel_id, status, message FROM boosts WHERE guild_id = ?", (guild.id,)) as cursor:
                     row = await cursor.fetchone()
             if not row or row[1] != 1 or not row[0]: return
             channel = guild.get_channel(row[0])
