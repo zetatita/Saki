@@ -526,16 +526,6 @@ class Moderation(commands.Cog):
 
 
   
-    class WelcomeView(discord.ui.View):
-     def __init__(self, guild_id: int):
-        super().__init__(timeout=None)
-        chat_url = f"https://discord.com/channels/{guild_id}"
-        vc_url = f"https://discord.com/channels/{guild_id}"
-        
-        self.add_item(discord.ui.Button(label="Chat Here", url=chat_url, style=discord.ButtonStyle.link))
-        self.add_item(discord.ui.Button(label="Create Saki VC", url=vc_url, style=discord.ButtonStyle.link))
-
-
     # ---------------------------------------------------------
     # UTILIDADES Y MODERACIÓN
     # ---------------------------------------------------------
