@@ -23,6 +23,7 @@ initial_extensions = [
     'cogs.jail',
     'cogs.utility',
     'cogs.help',
+    'cogs.setup_panel.py',
 ]
 
 @bot.event
