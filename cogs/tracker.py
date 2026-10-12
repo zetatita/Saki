@@ -151,22 +151,30 @@ class Tracker(commands.Cog):
         await self.init_db()
 
     async def record_user(self, user: discord.User):
+        """Registra y asegura que el avatar y nombre actual estén guardados en la base de datos."""
+        avatar_url = str(user.display_avatar.url)
+        username = user.name
+        
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute(
-                "INSERT INTO user_avatars (user_id, avatar_url) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM user_avatars WHERE user_id = ? AND avatar_url = ?)",
-                (user.id, str(user.display_avatar.url), user.id, str(user.display_avatar.url))
-            )
-            await db.execute(
-                "INSERT INTO user_names (user_id, username) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM user_names WHERE user_id = ? AND username = ?)",
-                (user.id, user.name, user.id, user.name)
-            )
+            # Comprobar e insertar avatar si no existe el último
+            async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                row = await cursor.fetchone()
+            if not row or row[0] != avatar_url:
+                await db.execute("INSERT INTO user_avatars (user_id, avatar_url) VALUES (?, ?)", (user.id, avatar_url))
+
+            # Comprobar e insertar nombre si no existe el último
+            async with db.execute("SELECT username FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                row_name = await cursor.fetchone()
+            if not row_name or row_name[0] != username:
+                await db.execute("INSERT INTO user_names (user_id, username) VALUES (?, ?)", (user.id, username))
+                
             await db.commit()
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        if before.avatar != after.avatar and after.avatar:
+        if before.display_avatar != after.display_avatar:
             async with aiosqlite.connect(DB_NAME) as db:
-                await db.execute("INSERT INTO user_avatars (user_id, avatar_url) VALUES (?, ?)", (after.id, str(after.avatar.url)))
+                await db.execute("INSERT INTO user_avatars (user_id, avatar_url) VALUES (?, ?)", (after.id, str(after.display_avatar.url)))
                 await db.commit()
 
         if before.name != after.name:
@@ -174,7 +182,7 @@ class Tracker(commands.Cog):
                 await db.execute("INSERT INTO user_names (user_id, username) VALUES (?, ?)", (after.id, after.name))
                 await db.commit()
 
-    @commands.command(name="avatars", aliases=["historyavatars", "avatar"])
+    @commands.command(name="avatars", aliases=["historyavatars", "avatar", "av"])
     async def avatars(self, ctx, user: discord.User = None):
         target = user or ctx.author
         await self.record_user(target)
@@ -226,12 +234,23 @@ class Tracker(commands.Cog):
         view = ProfileView(target)
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
-    @commands.command(name="banners", aliases=["historybanners"])
+    @commands.command(name="banners", aliases=["banner", "historybanners"])
     async def banners(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        banner_url = target.banner.url if target.banner else target.display_avatar.url
+        
+        # Obtenemos el perfil completo del usuario desde la API para asegurar que devuelva el banner correcto
+        try:
+            fetched_user = await self.bot.fetch_user(target.id)
+        except Exception:
+            fetched_user = target
+
         embed = discord.Embed(title=f"🎨 Banner de {target.name}", color=0x1e1f22)
-        embed.set_image(url=banner_url)
+        if fetched_user.banner:
+            embed.set_image(url=fetched_user.banner.url)
+        else:
+            embed.description = f"❌ **{target.name}** no tiene un banner configurado (mostrando avatar)."
+            embed.set_image(url=str(target.display_avatar.url))
+
         view = ProfileView(target)
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
@@ -243,7 +262,7 @@ class Tracker(commands.Cog):
             await db.commit()
         
         embed = discord.Embed(
-            description=f"### **Limpieza de Avatares**\n\nSe ha borrado de verdad el historial de avatares para **{target.name}**.",
+            description=f"### **Limpieza de Avatares**\n\nSe ha borrado el historial de avatares para **{target.name}**.",
             color=0x1e1f22
         )
         embed.set_author(name=f"{self.bot.user.name} perfiles", icon_url=self.bot.user.display_avatar.url)
@@ -257,7 +276,7 @@ class Tracker(commands.Cog):
             await db.commit()
         
         embed = discord.Embed(
-            description=f"### **Limpieza de Nombres**\n\nSe ha borrado de verdad el historial de nombres para **{target.name}**.",
+            description=f"### **Limpieza de Nombres**\n\nSe ha borrado el historial de nombres para **{target.name}**.",
             color=0x1e1f22
         )
         embed.set_author(name=f"{self.bot.user.name} perfiles", icon_url=self.bot.user.display_avatar.url)
@@ -271,7 +290,7 @@ class Tracker(commands.Cog):
             await db.commit()
         
         embed = discord.Embed(
-            description=f"### **Limpieza de Tags**\n\nSe ha borrado de verdad el historial de tags para **{target.name}**.",
+            description=f"### **Limpieza de Tags**\n\nSe ha borrado el historial de tags para **{target.name}**.",
             color=0x1e1f22
         )
         embed.set_author(name=f"{self.bot.user.name} perfiles", icon_url=self.bot.user.display_avatar.url)
