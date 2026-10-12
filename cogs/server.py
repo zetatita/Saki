@@ -210,7 +210,7 @@ class Server(commands.Cog):
     # ---------------------------------------------------------
     # SISTEMA DE BIENVENIDA (WELCOME)
     # ---------------------------------------------------------
-    @commands.group(name="welcome", aliases=["wlc"], invoke_without_command=True)
+    @commands.command(name="welcome", aliases=["wlc"])
     @commands.has_permissions(administrator=True)
     async def welcome(self, ctx):
         async with aiosqlite.connect(DB_NAME) as db:
@@ -234,7 +234,7 @@ class Server(commands.Cog):
     # ---------------------------------------------------------
     # SISTEMA DE DESPEDIDAS (GOODBYE)
     # ---------------------------------------------------------
-    @commands.group(name="goodbye", aliases=["despedida"], invoke_without_command=True)
+    @commands.command(name="goodbye", aliases=["despedida"])
     @commands.has_permissions(administrator=True)
     async def goodbye(self, ctx):
         async with aiosqlite.connect(DB_NAME) as db:
@@ -258,7 +258,7 @@ class Server(commands.Cog):
     # ---------------------------------------------------------
     # SISTEMA DE BOOSTS (BOOSTMSG)
     # ---------------------------------------------------------
-    @commands.group(name="boostmsg", aliases=["boost"], invoke_without_command=True)
+    @commands.command(name="boostmsg", aliases=["boost"])
     @commands.has_permissions(administrator=True)
     async def boostmsg(self, ctx):
         async with aiosqlite.connect(DB_NAME) as db:
