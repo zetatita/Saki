@@ -207,78 +207,7 @@ class Server(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    # ---------------------------------------------------------
-    # SISTEMA DE BIENVENIDA (WELCOME)
-    # ---------------------------------------------------------
-    @commands.command(name="welcome", aliases=["wlc"])
-    @commands.has_permissions(administrator=True)
-    async def welcome(self, ctx):
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT channel_id, status, message FROM welcomes WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
-                row = await cursor.fetchone()
-
-        ch_id, status, msg = row if row else (None, 0, "No configurado")
-        channel_mention = f"<#{ch_id}>" if ch_id else "*Ninguno*"
-        status_text = "✔ Enabled" if status == 1 else "❌ Disabled"
-
-        embed = discord.Embed(color=0x78b159 if status == 1 else 0x2b2d31)
-        embed.set_author(name="Welcome configuration")
-        embed.add_field(name="Channel", value=channel_mention, inline=True)
-        embed.add_field(name="Status", value=status_text, inline=True)
-        embed.add_field(name="Auto-delete", value="`Off`", inline=True)
-        embed.add_field(name="Message", value=f"```text\n{str(msg)[:500]}\n```", inline=False)
-
-        view = ConfigPanelView(ctx, "welcome")
-        await ctx.reply(embed=embed, view=view, mention_author=False)
-
-    # ---------------------------------------------------------
-    # SISTEMA DE DESPEDIDAS (GOODBYE)
-    # ---------------------------------------------------------
-    @commands.command(name="goodbye", aliases=["despedida"])
-    @commands.has_permissions(administrator=True)
-    async def goodbye(self, ctx):
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT channel_id, status, message FROM goodbyes WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
-                row = await cursor.fetchone()
-
-        ch_id, status, msg = row if row else (None, 0, "No configurado")
-        channel_mention = f"<#{ch_id}>" if ch_id else "*Ninguno*"
-        status_text = "✔ Enabled" if status == 1 else "❌ Disabled"
-
-        embed = discord.Embed(color=0x78b159 if status == 1 else 0x2b2d31)
-        embed.set_author(name="Goodbye configuration")
-        embed.add_field(name="Channel", value=channel_mention, inline=True)
-        embed.add_field(name="Status", value=status_text, inline=True)
-        embed.add_field(name="Auto-delete", value="`Off`", inline=True)
-        embed.add_field(name="Message", value=f"```text\n{str(msg)[:500]}\n```", inline=False)
-
-        view = ConfigPanelView(ctx, "goodbye")
-        await ctx.reply(embed=embed, view=view, mention_author=False)
-
-    # ---------------------------------------------------------
-    # SISTEMA DE BOOSTS (BOOSTMSG)
-    # ---------------------------------------------------------
-    @commands.command(name="boostmsg", aliases=["boost"])
-    @commands.has_permissions(administrator=True)
-    async def boostmsg(self, ctx):
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT channel_id, status, message FROM boosts WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
-                row = await cursor.fetchone()
-
-        ch_id, status, msg = row if row else (None, 0, "No configurado")
-        channel_mention = f"<#{ch_id}>" if ch_id else "*Ninguno*"
-        status_text = "✔ Enabled" if status == 1 else "❌ Disabled"
-
-        embed = discord.Embed(color=0x78b159 if status == 1 else 0x2b2d31)
-        embed.set_author(name="Boostmsg configuration")
-        embed.add_field(name="Channel", value=channel_mention, inline=True)
-        embed.add_field(name="Status", value=status_text, inline=True)
-        embed.add_field(name="Auto-delete", value="`Off`", inline=True)
-        embed.add_field(name="Message", value=f"```text\n{str(msg)[:500]}\n```", inline=False)
-
-        view = ConfigPanelView(ctx, "boostmsg")
-        await ctx.reply(embed=embed, view=view, mention_author=False)
-
+    
     # ---------------------------------------------------------
     # LISTENERS GLOBALES (EVENTOS AUTOMÁTICOS)
     # ---------------------------------------------------------
