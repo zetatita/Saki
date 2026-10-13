@@ -54,21 +54,23 @@ async def create_avatar_grid(avatar_urls):
 
 
 class ProfileSelect(discord.ui.Select):
-    def __init__(self, target_user: discord.User):
+    def __init__(self, target_user: discord.User, current_selected: str = "avatars"):
         self.target_user = target_user
+        
         options = [
-            discord.SelectOption(label="Nombres", description="Nombres de usuario anteriores", emoji="📝", value="names"),
-            discord.SelectOption(label="Avatares", description="Historial de fotos de perfil", emoji="📦", value="avatars", default=True),
-            discord.SelectOption(label="Tags", description="Tags y apodos anteriores", emoji="🏷️", value="tags"),
-            discord.SelectOption(label="Ficha", description="Información general del usuario", emoji="📊", value="ficha")
+            discord.SelectOption(label="Nombres", description="Nombres de usuario anteriores", emoji="📝", value="names", default=(current_selected == "names")),
+            discord.SelectOption(label="Avatares", description="Historial de fotos de perfil", emoji="📦", value="avatars", default=(current_selected == "avatars")),
+            discord.SelectOption(label="Tags", description="Tags y apodos anteriores", emoji="🏷️", value="tags", default=(current_selected == "tags")),
+            discord.SelectOption(label="Ficha", description="Información general del usuario", emoji="📊", value="ficha", default=(current_selected == "ficha"))
         ]
-        super().__init__(placeholder="Avatares", options=options, min_values=1, max_values=1)
+        super().__init__(placeholder="Selecciona una opción...", options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
+        selected = self.values[0]
 
         async with aiosqlite.connect(DB_NAME) as db:
-            if self.values[0] == "avatars":
+            if selected == "avatars":
                 async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 25", (self.target_user.id,)) as cursor:
                     rows = await cursor.fetchall()
                 
@@ -76,7 +78,8 @@ class ProfileSelect(discord.ui.Select):
                 grid_file = await create_avatar_grid(urls)
                 
                 embed = discord.Embed(color=0x1e1f22)
-                view = ProfileView(self.target_user)
+                view = ProfileView(self.target_user, current_selected="avatars")
+                
                 if grid_file:
                     file = discord.File(grid_file, filename="avatars.png")
                     embed.set_image(url="attachment://avatars.png")
@@ -85,37 +88,37 @@ class ProfileSelect(discord.ui.Select):
                     embed.set_image(url=str(self.target_user.display_avatar.url))
                     return await interaction.edit_original_response(content=f"🖼️ Avatar actual de **{self.target_user.name}**", embed=embed, attachments=[], view=view)
 
-            elif self.values[0] == "names":
+            elif selected == "names":
                 async with db.execute("SELECT username, timestamp FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (self.target_user.id,)) as cursor:
                     rows = await cursor.fetchall()
                 
                 names_str = "\n".join([f"`{i+1}.` {name} • *{date[:10]}*" for i, (name, date) in enumerate(rows)]) if rows else f"`1.` {self.target_user.name}"
                 embed = discord.Embed(title=f"🌐 Historial de nombres — {self.target_user.name}", description=names_str, color=0x1e1f22)
-                view = ProfileView(self.target_user)
+                view = ProfileView(self.target_user, current_selected="names")
                 return await interaction.edit_original_response(content=None, embed=embed, attachments=[], view=view)
 
-            elif self.values[0] == "tags":
+            elif selected == "tags":
                 async with db.execute("SELECT tag, timestamp FROM user_tags WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (self.target_user.id,)) as cursor:
                     rows = await cursor.fetchall()
                 
                 tags_str = "\n".join([f"`{i+1}.` {t} • *{d[:10]}*" for i, (t, d) in enumerate(rows)]) if rows else f"`1.` {self.target_user.name}"
                 embed = discord.Embed(title=f"🏷️ Historial de Tags — {self.target_user.name}", description=tags_str, color=0x1e1f22)
-                view = ProfileView(self.target_user)
+                view = ProfileView(self.target_user, current_selected="tags")
                 return await interaction.edit_original_response(content=None, embed=embed, attachments=[], view=view)
 
-            elif self.values[0] == "ficha":
+            elif selected == "ficha":
                 embed = discord.Embed(title=f"📊 Ficha de {self.target_user.name}", color=0x1e1f22)
                 embed.set_thumbnail(url=str(self.target_user.display_avatar.url))
                 embed.add_field(name="ID", value=f"`{self.target_user.id}`", inline=True)
                 embed.add_field(name="Creado", value=f"<t:{int(self.target_user.created_at.timestamp())}:R>", inline=True)
-                view = ProfileView(self.target_user)
+                view = ProfileView(self.target_user, current_selected="ficha")
                 return await interaction.edit_original_response(content=None, embed=embed, attachments=[], view=view)
 
 
 class ProfileView(discord.ui.View):
-    def __init__(self, target_user: discord.User):
+    def __init__(self, target_user: discord.User, current_selected: str = "avatars"):
         super().__init__(timeout=60)
-        self.add_item(ProfileSelect(target_user))
+        self.add_item(ProfileSelect(target_user, current_selected))
 
 
 class Tracker(commands.Cog):
@@ -145,44 +148,65 @@ class Tracker(commands.Cog):
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_banners (
+                    user_id INTEGER,
+                    banner_url TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             await db.commit()
 
     async def cog_load(self):
         await self.init_db()
 
     async def record_user(self, user: discord.User):
-        """Registra y asegura que el avatar y nombre actual estén guardados en la base de datos."""
+        """Verifica y registra de manera inteligente avatares, nombres, tags y banners nuevos."""
         avatar_url = str(user.display_avatar.url)
         username = user.name
-        
+        tag = getattr(user, "discriminator", "0")
+        if tag == "0":
+            tag = user.name  # Soporte para el nuevo sistema de tags de Discord
+
+        try:
+            fetched_user = await self.bot.fetch_user(user.id)
+            banner_url = str(fetched_user.banner.url) if fetched_user.banner else None
+        except Exception:
+            banner_url = None
+
         async with aiosqlite.connect(DB_NAME) as db:
-            # Comprobar e insertar avatar si no existe el último
+            # 1. Verificar y registrar Avatar
             async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
-                row = await cursor.fetchone()
-            if not row or row[0] != avatar_url:
+                row_avatar = await cursor.fetchone()
+            if not row_avatar or row_avatar[0] != avatar_url:
                 await db.execute("INSERT INTO user_avatars (user_id, avatar_url) VALUES (?, ?)", (user.id, avatar_url))
 
-            # Comprobar e insertar nombre si no existe el último
+            # 2. Verificar y registrar Nombre de usuario
             async with db.execute("SELECT username FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                 row_name = await cursor.fetchone()
             if not row_name or row_name[0] != username:
                 await db.execute("INSERT INTO user_names (user_id, username) VALUES (?, ?)", (user.id, username))
-                
+
+            # 3. Verificar y registrar Tag
+            async with db.execute("SELECT tag FROM user_tags WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                row_tag = await cursor.fetchone()
+            if not row_tag or row_tag[0] != tag:
+                await db.execute("INSERT INTO user_tags (user_id, tag) VALUES (?, ?)", (user.id, tag))
+
+            # 4. Verificar y registrar Banner (si existe)
+            if banner_url:
+                async with db.execute("SELECT banner_url FROM user_banners WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                    row_banner = await cursor.fetchone()
+                if not row_banner or row_banner[0] != banner_url:
+                    await db.execute("INSERT INTO user_banners (user_id, banner_url) VALUES (?, ?)", (user.id, banner_url))
+
             await db.commit()
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        if before.display_avatar != after.display_avatar:
-            async with aiosqlite.connect(DB_NAME) as db:
-                await db.execute("INSERT INTO user_avatars (user_id, avatar_url) VALUES (?, ?)", (after.id, str(after.display_avatar.url)))
-                await db.commit()
+        await self.record_user(after)
 
-        if before.name != after.name:
-            async with aiosqlite.connect(DB_NAME) as db:
-                await db.execute("INSERT INTO user_names (user_id, username) VALUES (?, ?)", (after.id, after.name))
-                await db.commit()
-
-    @commands.command(name="avatars", aliases=["historyavatars", "avatar", "av"])
+    @commands.command(name="avatars", aliases=["historyavatars"])
     async def avatars(self, ctx, user: discord.User = None):
         target = user or ctx.author
         await self.record_user(target)
@@ -202,7 +226,7 @@ class Tracker(commands.Cog):
         else:
             embed.set_image(url=str(target.display_avatar.url))
 
-        view = ProfileView(target)
+        view = ProfileView(target, current_selected="avatars")
         if file:
             await ctx.reply(content=f"🖼️ Historial de avatares de **{target.name}**", embed=embed, file=file, view=view, mention_author=False)
         else:
@@ -219,26 +243,28 @@ class Tracker(commands.Cog):
 
         names_str = "\n".join([f"`{i+1}.` {n} • *{d[:10]}*" for i, (n, d) in enumerate(rows)]) if rows else f"`1.` {target.name}"
         embed = discord.Embed(title=f"🌐 Historial de nombres — {target.name}", description=names_str, color=0x1e1f22)
-        view = ProfileView(target)
+        view = ProfileView(target, current_selected="names")
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @commands.command(name="tags", aliases=["historytags"])
     async def tags(self, ctx, user: discord.User = None):
         target = user or ctx.author
+        await self.record_user(target)
+
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT tag, timestamp FROM user_tags WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (target.id,)) as cursor:
                 rows = await cursor.fetchall()
 
         tags_str = "\n".join([f"`{i+1}.` {t} • *{d[:10]}*" for i, (t, d) in enumerate(rows)]) if rows else f"`1.` {target.name}"
         embed = discord.Embed(title=f"🏷️ Historial de Tags — {target.name}", description=tags_str, color=0x1e1f22)
-        view = ProfileView(target)
+        view = ProfileView(target, current_selected="tags")
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
-    @commands.command(name="banners", aliases=["banner", "historybanners"])
-    async def banners(self, ctx, user: discord.User = None):
+    @commands.command(name="historybanners")
+    async def historybanners(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        
-        # Obtenemos el perfil completo del usuario desde la API para asegurar que devuelva el banner correcto
+        await self.record_user(target)
+
         try:
             fetched_user = await self.bot.fetch_user(target.id)
         except Exception:
@@ -251,59 +277,8 @@ class Tracker(commands.Cog):
             embed.description = f"❌ **{target.name}** no tiene un banner configurado (mostrando avatar)."
             embed.set_image(url=str(target.display_avatar.url))
 
-        view = ProfileView(target)
+        view = ProfileView(target, current_selected="ficha")
         await ctx.reply(embed=embed, view=view, mention_author=False)
-
-    @commands.command(name="clearavatars")
-    async def clearavatars(self, ctx, member: discord.Member = None):
-        target = member if member and ctx.author.guild_permissions.administrator else ctx.author
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM user_avatars WHERE user_id = ?", (target.id,))
-            await db.commit()
-        
-        embed = discord.Embed(
-            description=f"### **Limpieza de Avatares**\n\nSe ha borrado el historial de avatares para **{target.name}**.",
-            color=0x1e1f22
-        )
-        embed.set_author(name=f"{self.bot.user.name} perfiles", icon_url=self.bot.user.display_avatar.url)
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="clearnames")
-    async def clearnames(self, ctx, member: discord.Member = None):
-        target = member if member and ctx.author.guild_permissions.administrator else ctx.author
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM user_names WHERE user_id = ?", (target.id,))
-            await db.commit()
-        
-        embed = discord.Embed(
-            description=f"### **Limpieza de Nombres**\n\nSe ha borrado el historial de nombres para **{target.name}**.",
-            color=0x1e1f22
-        )
-        embed.set_author(name=f"{self.bot.user.name} perfiles", icon_url=self.bot.user.display_avatar.url)
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="cleartags")
-    async def cleartags(self, ctx, member: discord.Member = None):
-        target = member if member and ctx.author.guild_permissions.administrator else ctx.author
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM user_tags WHERE user_id = ?", (target.id,))
-            await db.commit()
-        
-        embed = discord.Embed(
-            description=f"### **Limpieza de Tags**\n\nSe ha borrado el historial de tags para **{target.name}**.",
-            color=0x1e1f22
-        )
-        embed.set_author(name=f"{self.bot.user.name} perfiles", icon_url=self.bot.user.display_avatar.url)
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="clearbanners")
-    async def clearbanners(self, ctx):
-        embed = discord.Embed(
-            description="### **Limpieza de Banners**\n\nSe ha limpiado el registro de banners correctamente.",
-            color=0x1e1f22
-        )
-        embed.set_author(name=f"{self.bot.user.name} perfiles", icon_url=self.bot.user.display_avatar.url)
-        await ctx.reply(embed=embed, mention_author=False)
 
 async def setup(bot):
     await bot.add_cog(Tracker(bot))
