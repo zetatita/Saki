@@ -50,6 +50,16 @@ class ChatChannelSelect(discord.ui.ChannelSelect):
     async def callback(self, interaction: discord.Interaction):
         selected_ch = self.values[0]
         async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS welcomes (
+                    guild_id INTEGER PRIMARY KEY, 
+                    channel_id INTEGER, 
+                    status INTEGER DEFAULT 1, 
+                    message TEXT,
+                    chat_channel_id INTEGER,
+                    vc_channel_id INTEGER
+                )
+            """)
             await db.execute("UPDATE welcomes SET chat_channel_id = ? WHERE guild_id = ?", (selected_ch.id, interaction.guild.id))
             await db.commit()
         await self.parent_view.refresh_panel(interaction)
@@ -62,6 +72,16 @@ class VcChannelSelect(discord.ui.ChannelSelect):
     async def callback(self, interaction: discord.Interaction):
         selected_ch = self.values[0]
         async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS welcomes (
+                    guild_id INTEGER PRIMARY KEY, 
+                    channel_id INTEGER, 
+                    status INTEGER DEFAULT 1, 
+                    message TEXT,
+                    chat_channel_id INTEGER,
+                    vc_channel_id INTEGER
+                )
+            """)
             await db.execute("UPDATE welcomes SET vc_channel_id = ? WHERE guild_id = ?", (selected_ch.id, interaction.guild.id))
             await db.commit()
         await self.parent_view.refresh_panel(interaction)
@@ -83,12 +103,30 @@ class ConfigPanelView(discord.ui.View):
     async def refresh_panel(self, interaction: discord.Interaction):
         async with aiosqlite.connect(DB_NAME) as db:
             if self.system_type == "welcome":
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS welcomes (
+                        guild_id INTEGER PRIMARY KEY, 
+                        channel_id INTEGER, 
+                        status INTEGER DEFAULT 1, 
+                        message TEXT,
+                        chat_channel_id INTEGER,
+                        vc_channel_id INTEGER
+                    )
+                """)
                 async with db.execute(f"SELECT channel_id, status, message, chat_channel_id, vc_channel_id FROM {self.table} WHERE guild_id = ?", (interaction.guild.id,)) as cursor:
                     row = await cursor.fetchone()
                 ch_id, status, msg, chat_ch, vc_ch = row if row else (None, 0, "• Please read our rules.\n• Boost for perks.", None, None)
                 chat_mention = f"<#{chat_ch}>" if chat_ch else "*Predeterminado*"
                 vc_mention = f"<#{vc_ch}>" if vc_ch else "*Predeterminado*"
             else:
+                await db.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table} (
+                        guild_id INTEGER PRIMARY KEY, 
+                        channel_id INTEGER, 
+                        status INTEGER DEFAULT 1, 
+                        message TEXT
+                    )
+                """)
                 async with db.execute(f"SELECT channel_id, status, message FROM {self.table} WHERE guild_id = ?", (interaction.guild.id,)) as cursor:
                     row = await cursor.fetchone()
                 ch_id, status, msg = row if row else (None, 0, "• Please read our rules.\n• Boost for perks.")
@@ -107,7 +145,10 @@ class ConfigPanelView(discord.ui.View):
 
         embed.add_field(name="Message", value=f"```text\n{str(msg)[:500]}\n```", inline=False)
 
-        await interaction.response.edit_message(embed=embed, view=self)
+        try:
+            await interaction.response.edit_message(embed=embed, view=self)
+        except discord.InteractionResponded:
+            await interaction.edit_original_response(embed=embed, view=self)
 
     @discord.ui.button(label="Set message", style=discord.ButtonStyle.secondary, row=3)
     async def set_message(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -170,7 +211,7 @@ class ConfigPanelView(discord.ui.View):
 
 class ChannelSelectMenu(discord.ui.ChannelSelect):
     def __init__(self, table_name: str, parent_view: ConfigPanelView):
-        super().__init__(placeholder="Selecciona el canal de bienvenida...", channel_types=[discord.ChannelType.text], row=0)
+        super().__init__(placeholder="Selecciona el canal...", channel_types=[discord.ChannelType.text], row=0)
         self.table_name = table_name
         self.parent_view = parent_view
 
@@ -179,21 +220,36 @@ class ChannelSelectMenu(discord.ui.ChannelSelect):
         default_msg = "• Please read our rules.\n• Boost for perks.\n• Invite your friends!"
 
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute(f"""
-                CREATE TABLE IF NOT EXISTS {self.table_name} (
-                    guild_id INTEGER PRIMARY KEY, 
-                    channel_id INTEGER, 
-                    status INTEGER DEFAULT 1, 
-                    message TEXT,
-                    chat_channel_id INTEGER,
-                    vc_channel_id INTEGER
-                )
-            """)
-            await db.execute(f"""
-                INSERT INTO {self.table_name} (guild_id, channel_id, status, message)
-                VALUES (?, ?, 1, ?)
-                ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, status = 1
-            """, (interaction.guild.id, selected_ch.id, default_msg, selected_ch.id))
+            if self.table_name == "welcomes":
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS welcomes (
+                        guild_id INTEGER PRIMARY KEY, 
+                        channel_id INTEGER, 
+                        status INTEGER DEFAULT 1, 
+                        message TEXT,
+                        chat_channel_id INTEGER,
+                        vc_channel_id INTEGER
+                    )
+                """)
+                await db.execute("""
+                    INSERT INTO welcomes (guild_id, channel_id, status, message)
+                    VALUES (?, ?, 1, ?)
+                    ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, status = 1
+                """, (interaction.guild.id, selected_ch.id, default_msg, selected_ch.id))
+            else:
+                await db.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {self.table_name} (
+                        guild_id INTEGER PRIMARY KEY, 
+                        channel_id INTEGER, 
+                        status INTEGER DEFAULT 1, 
+                        message TEXT
+                    )
+                """)
+                await db.execute(f"""
+                    INSERT INTO {self.table_name} (guild_id, channel_id, status, message)
+                    VALUES (?, ?, 1, ?)
+                    ON CONFLICT(guild_id) DO UPDATE SET channel_id = ?, status = 1
+                """, (interaction.guild.id, selected_ch.id, default_msg, selected_ch.id))
             await db.commit()
 
         await self.parent_view.refresh_panel(interaction)
