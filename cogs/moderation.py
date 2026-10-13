@@ -667,7 +667,10 @@ class Moderation(commands.Cog):
     @commands.has_permissions(ban_members=True)
     async def hardban(self, ctx, user: discord.User = None, *, reason: str = "No especificada"):
         if user is None:
-            embed = discord.Embed(description="### **Comando: hardban**\n\nBanea de forma permanente y registra en lista negra.\n\n```text\nSintaxis: ,hb <usuario> [razón]\n         ,hb list\n```", color=0x1e1f22)
+            embed = discord.Embed(
+                description="### **Comando: hardban**\n\nBanea de forma permanente y registra en lista negra.\n\n```text\nSintaxis: ,hb <usuario> [razón]\n         ,hb list\n```",
+                color=0x1e1f22
+            )
             return await ctx.reply(embed=embed, mention_author=False)
 
         # Verificación de Administrador del Antinuke
@@ -696,40 +699,22 @@ class Moderation(commands.Cog):
             )
             await db.commit()
         await ctx.message.add_reaction("👍")
-        
+
     @hardban.command(name="list")
     @commands.has_permissions(ban_members=True)
     async def hardban_list(self, ctx):
+        """Muestra la lista de usuarios con hardban en el servidor"""
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS hardbans (
-                    guild_id INTEGER, user_id INTEGER, reason TEXT, moderator_id INTEGER,
-                    banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (guild_id, user_id)
-                )
-            """)
             async with db.execute("SELECT user_id, reason FROM hardbans WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
                 rows = await cursor.fetchall()
 
         if not rows:
-            embed = discord.Embed(
-                description="### **Hardbans**\n\nNo se encontraron registros de hardbans activos en este servidor.",
-                color=0x2b2d31
-            )
-            embed.set_footer(text="Página 1/1 • 0 registros\nen honor a lockfile")
-            return await ctx.reply(embed=embed, mention_author=False)
+            return await ctx.reply("No hay usuarios registrados en la lista negra (hardbans).", mention_author=False)
 
-        list_entries = []
-        for i, (u_id, reason) in enumerate(rows[:10], start=1):
-            list_entries.append(f"`{i}` <@{u_id}> — `{u_id}`")
-
-        embed = discord.Embed(
-            title="Hardbans",
-            description="\n".join(list_entries),
-            color=0x2b2d31
-        )
-        embed.set_footer(text=f"Página 1/1 • {len(rows)} registros\nen honor a lockfile")
+        description = "\n".join([f"• <@{row[0]}> — Razón: *{row[1]}*" for row in rows[:15]])
+        embed = discord.Embed(title="Lista Negra de Hardbans", description=description, color=0xff4b4b)
         await ctx.reply(embed=embed, mention_author=False)
-
+        
     @commands.command(name="unban")
     @commands.has_permissions(ban_members=True)
     async def unban(self, ctx, user_arg: str = None, *, reason: str = "No especificada"):
