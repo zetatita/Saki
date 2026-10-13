@@ -209,7 +209,7 @@ class Tracker(commands.Cog):
     async def send_boost_required_embed(self, ctx):
         """Responde con un embed estilo Bleed requiriendo mejora del servidor."""
         embed = discord.Embed(
-            title="🚀 **Función Exclusiva de Mejoas / Boost**",
+            title="🚀 **Función Exclusiva de Mejoras / Boost**",
             description=(
                 "Para poder usar los comandos de limpieza de historial debes haber "
                 "**mejorado (boosteado) el servidor** o contar con permisos de Administrador.\n\n"
@@ -224,8 +224,23 @@ class Tracker(commands.Cog):
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         await self.record_user(after)
 
+    @commands.command(name="avatar", aliases=["av"])
+    async def avatar(self, ctx, user: discord.User = None):
+        """Muestra el avatar actual del usuario de forma directa."""
+        target = user or ctx.author
+        
+        embed = discord.Embed(
+            title=f"Avatar de {target.name}",
+            color=0x2b2d31
+        )
+        embed.set_image(url=str(target.display_avatar.url))
+        embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
+        
+        await ctx.reply(embed=embed, mention_author=False)
+
     @commands.command(name="avatars", aliases=["historyavatars"])
     async def avatars(self, ctx, user: discord.User = None):
+        """Muestra la cuadrícula con el historial de avatares del usuario."""
         target = user or ctx.author
         await self.record_user(target)
         
