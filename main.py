@@ -16,6 +16,7 @@ initial_extensions = [
     'cogs.server',
     'cogs.tracker',
     'cogs.vip',
+    'cogs.afk',
     'cogs.moderation',
     'cogs.antinuke',
     'cogs.autoresponder',
