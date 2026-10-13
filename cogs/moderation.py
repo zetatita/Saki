@@ -3,6 +3,7 @@ from discord.ext import commands
 import aiosqlite
 import re
 import aiohttp
+import datetime
 from config import DB_NAME
 
 # =========================================================
@@ -52,7 +53,8 @@ class RolesPaginator(discord.ui.View):
     @discord.ui.button(label="Anterior", style=discord.ButtonStyle.secondary)
     async def btn_prev(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.ctx.author.id:
-            return await interaction.response.send_message("No puedes interactuar con este menú.", ephemeral=True)
+            embed_err = discord.Embed(description="No puedes interactuar con este menú.", color=0x1e1f22)
+            return await interaction.response.send_message(embed=embed_err, ephemeral=True)
 
         self.current_page -= 1
         self.update_buttons()
@@ -61,7 +63,8 @@ class RolesPaginator(discord.ui.View):
     @discord.ui.button(label="Siguiente", style=discord.ButtonStyle.secondary)
     async def btn_next(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.ctx.author.id:
-            return await interaction.response.send_message("No puedes interactuar con este menú.", ephemeral=True)
+            embed_err = discord.Embed(description="No puedes interactuar con este menú.", color=0x1e1f22)
+            return await interaction.response.send_message(embed=embed_err, ephemeral=True)
 
         self.current_page += 1
         self.update_buttons()
@@ -91,7 +94,8 @@ class UnbanConfirmView(discord.ui.View):
     @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.ctx.author.id:
-            return await interaction.response.send_message("No puedes interactuar con esta confirmación.", ephemeral=True)
+            embed_err = discord.Embed(description="No puedes interactuar con esta confirmación.", color=0x1e1f22)
+            return await interaction.response.send_message(embed=embed_err, ephemeral=True)
 
         try:
             await self.ctx.guild.unban(self.target_user, reason=f"[Unban por {self.ctx.author}]: {self.reason}")
@@ -115,7 +119,8 @@ class UnbanConfirmView(discord.ui.View):
     @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
     async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.ctx.author.id:
-            return await interaction.response.send_message("No puedes interactuar con esta confirmación.", ephemeral=True)
+            embed_err = discord.Embed(description="No puedes interactuar con esta confirmación.", color=0x1e1f22)
+            return await interaction.response.send_message(embed=embed_err, ephemeral=True)
 
         await interaction.response.defer()
         await self.message.delete()
@@ -139,7 +144,8 @@ class VoiceControlView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message("❌ Debes estar conectado a un canal de voz para usar estos controles.", ephemeral=True)
+            embed_err = discord.Embed(description="❌ Debes estar conectado a un canal de voz para usar estos controles.", color=0x1e1f22)
+            await interaction.response.send_message(embed=embed_err, ephemeral=True)
             return False
         return True
 
@@ -147,25 +153,29 @@ class VoiceControlView(discord.ui.View):
     async def lock_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.user.voice.channel
         await channel.set_permissions(interaction.guild.default_role, connect=False)
-        await interaction.response.send_message("🔒 Canal de voz bloqueado.", ephemeral=True)
+        embed = discord.Embed(description="🔒 Canal de voz bloqueado.", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="🔓", style=discord.ButtonStyle.secondary, custom_id="vc_unlock", row=0)
     async def unlock_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.user.voice.channel
         await channel.set_permissions(interaction.guild.default_role, connect=True)
-        await interaction.response.send_message("🔓 Canal de voz desbloqueado.", ephemeral=True)
+        embed = discord.Embed(description="🔓 Canal de voz desbloqueado.", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="🙈", style=discord.ButtonStyle.secondary, custom_id="vc_hide", row=0)
     async def hide_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.user.voice.channel
         await channel.set_permissions(interaction.guild.default_role, view_channel=False)
-        await interaction.response.send_message("🙈 Canal de voz ocultado.", ephemeral=True)
+        embed = discord.Embed(description="🙈 Canal de voz ocultado.", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="👀", style=discord.ButtonStyle.secondary, custom_id="vc_unhide", row=0)
     async def unhide_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.user.voice.channel
         await channel.set_permissions(interaction.guild.default_role, view_channel=True)
-        await interaction.response.send_message("👀 Canal de voz visible.", ephemeral=True)
+        embed = discord.Embed(description="👀 Canal de voz visible.", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, custom_id="vc_limit", row=1)
     async def limit_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -173,19 +183,24 @@ class VoiceControlView(discord.ui.View):
         current = channel.user_limit
         new_limit = 0 if current > 0 else 5
         await channel.edit(user_limit=new_limit)
-        await interaction.response.send_message(f"👥 Límite cambiado a: {'Sin límite' if new_limit == 0 else new_limit}", ephemeral=True)
+        limit_text = 'Sin límite' if new_limit == 0 else str(new_limit)
+        embed = discord.Embed(description=f"👥 Límite cambiado a: {limit_text}", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="➕", style=discord.ButtonStyle.secondary, custom_id="vc_allow", row=1)
     async def allow_user(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("ℹ️ Usa `/vc allow @usuario` para permitir el acceso.", ephemeral=True)
+        embed = discord.Embed(description="ℹ️ Usa `/vc allow @usuario` para permitir el acceso.", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="👢", style=discord.ButtonStyle.secondary, custom_id="vc_kick", row=1)
     async def kick_user(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("ℹ️ Usa `/vc kick @usuario` para expulsar a alguien.", ephemeral=True)
+        embed = discord.Embed(description="ℹ️ Usa `/vc kick @usuario` para expulsar a alguien.", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="✏️", style=discord.ButtonStyle.secondary, custom_id="vc_rename", row=1)
     async def rename_vc(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("ℹ️ Usa `/vc name <nombre>` para cambiar el nombre.", ephemeral=True)
+        embed = discord.Embed(description="ℹ️ Usa `/vc name <nombre>` para cambiar el nombre.", color=0x1e1f22)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class Moderation(commands.Cog):
@@ -193,6 +208,7 @@ class Moderation(commands.Cog):
         self.bot = bot
         self.snipes = {}
         self.active_jtc = {}
+
     # ---------------------------------------------------------
     # LISTENERS GLOBALES
     # ---------------------------------------------------------
@@ -264,46 +280,6 @@ class Moderation(commands.Cog):
             """)
             async with db.execute("SELECT category_id, jtc_channel_id FROM jtc_config WHERE guild_id = ?", (member.guild.id,)) as cursor:
                 row = await cursor.fetchone()
-                if row:
-                    cat_id, jtc_ch_id = row
-                    if after.channel and after.channel.id == jtc_ch_id:
-                        category = member.guild.get_channel(cat_id)
-                        new_vc = await member.guild.create_voice_channel(
-                            name=f"🔊 ┃ {member.name}",
-                            category=category,
-                            reason=f"Canal temporal JTC de {member}"
-                        )
-                        await member.move_to(new_vc)
-                        self.active_jtc[new_vc.id] = member.id
-
-                    if before.channel and before.channel.id in self.active_jtc:
-                        if len(before.channel.members) == 0:
-                            try:
-                                await before.channel.delete(reason="Canal temporal JTC vacío")
-                            except Exception:
-                                pass
-                            self.active_jtc.pop(before.channel.id, None)
-
-    @commands.Cog.listener()
-    async def on_message_delete(self, message: discord.Message):
-        if message.author.bot or not message.guild:
-            return
-        self.snipes[message.channel.id] = {
-            "content": message.content,
-            "author": message.author,
-            "created_at": message.created_at,
-            "attachment": message.attachments[0].url if message.attachments else None
-        }
-    @commands.Cog.listener()
-    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS jtc_config (
-                    guild_id INTEGER PRIMARY KEY, category_id INTEGER, jtc_channel_id INTEGER
-                )
-            """)
-            async with db.execute("SELECT category_id, jtc_channel_id FROM jtc_config WHERE guild_id = ?", (member.guild.id,)) as cursor:
-                row = await cursor.fetchone()
 
         jtc_ch_id = None
         cat_id = None
@@ -311,13 +287,10 @@ class Moderation(commands.Cog):
         if row:
             cat_id, jtc_ch_id = row
 
-        # 1. Crear canal si entra al JTC configurado O si el canal al que entra se llama "➕ ┃ jtc"
         is_jtc_channel = (jtc_ch_id and after.channel and after.channel.id == jtc_ch_id) or (after.channel and "jtc" in after.channel.name.lower())
 
         if is_jtc_channel:
-            # Si no hay categoría guardada, usamos la del canal actual o la primera disponible
             category = member.guild.get_channel(cat_id) if cat_id else after.channel.category
-            
             try:
                 new_vc = await member.guild.create_voice_channel(
                     name=f"🔊 ┃ {member.name}",
@@ -329,7 +302,6 @@ class Moderation(commands.Cog):
             except Exception as e:
                 print(f"❌ Error al crear el canal JTC: {e}")
 
-        # 2. Eliminar canal temporal automáticamente cuando se queda sin miembros
         if before.channel and before.channel.id in self.active_jtc:
             if len(before.channel.members) == 0:
                 try:
@@ -337,13 +309,24 @@ class Moderation(commands.Cog):
                 except Exception:
                     pass
                 self.active_jtc.pop(before.channel.id, None)
+
+    @commands.Cog.listener()
+    async def on_message_delete(self, message: discord.Message):
+        if message.author.bot or not message.guild:
+            return
+        self.snipes[message.channel.id] = {
+            "content": message.content,
+            "author": message.author,
+            "created_at": message.created_at,
+            "attachment": message.attachments[0].url if message.attachments else None
+        }
+
     # ---------------------------------------------------------
     # COMANDO SETUP VC & INTERFACE
     # ---------------------------------------------------------
     @commands.command(name="setupvc", aliases=["setupinterface"])
     @commands.has_permissions(administrator=True)
     async def setup_vc(self, ctx):
-        # Primero eliminamos el mensaje del comando si es posible
         try:
             await ctx.message.delete()
         except discord.HTTPException:
@@ -355,12 +338,10 @@ class Moderation(commands.Cog):
         }
 
         try:
-            # 1. Crear categoría y canales
             category = await guild.create_category("VC", reason="Configuración de canales de voz y panel")
             text_channel = await guild.create_text_channel("📝 ┃ interface", category=category, overwrites=overwrites)
             voice_channel = await guild.create_voice_channel("➕ ┃ jtc", category=category)
 
-            # 2. Guardar en la base de datos
             async with aiosqlite.connect(DB_NAME) as db:
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS jtc_config (
@@ -373,7 +354,6 @@ class Moderation(commands.Cog):
                 )
                 await db.commit()
 
-            # 3. Enviar el embed con la vista de botones
             embed = discord.Embed(
                 description=(
                     "Puede utilizar esta interfaz para administrar su canal de voz.\n\n"
@@ -385,12 +365,13 @@ class Moderation(commands.Cog):
             view = VoiceControlView()
             
             await text_channel.send(embed=embed, view=view)
-            await ctx.send(f"✅ ¡Sistema de canales de voz e interfaz configurado correctamente en la categoría {category.name}!", delete_after=10)
+            embed_success = discord.Embed(description=f"✅ ¡Sistema de canales de voz e interfaz configurado correctamente en la categoría {category.name}!", color=0x2ecc71)
+            await ctx.send(embed=embed_success, delete_after=10)
 
         except Exception as e:
-            # Si ocurre cualquier error, lo imprimimos en la consola de tu terminal para saber exacto qué falló
             print(f"❌ Error detallado en setupvc: {e}")
-            await ctx.send(f"❌ Ocurrió un error al configurar el panel: `{e}`", delete_after=15)
+            embed_err = discord.Embed(description=f"❌ Ocurrió un error al configurar el panel: `{e}`", color=0x1e1f22)
+            await ctx.send(embed=embed_err, delete_after=15)
 
     # ---------------------------------------------------------
     # ROLES Y COMANDO ,r
@@ -407,9 +388,12 @@ class Moderation(commands.Cog):
         paginator.message = await ctx.reply(embed=embed, view=paginator, mention_author=False)
 
     @commands.group(name="r", invoke_without_command=True)
-    @commands.has_permissions(manage_roles=True)
     async def role_group(self, ctx, member: discord.Member = None, *, roles_input: str = None):
         if member and roles_input:
+            if not ctx.author.guild_permissions.manage_roles:
+                embed_err = discord.Embed(description="⚠️ No tienes permisos para gestionar roles.", color=0x1e1f22)
+                return await ctx.reply(embed=embed_err, mention_author=False)
+
             role_names = [r.strip() for r in roles_input.split(",")]
             assigned, removed = [], []
             for r_name in role_names:
@@ -442,13 +426,15 @@ class Moderation(commands.Cog):
             embed = discord.Embed(description=f"✅ {ctx.author.mention}: Se ha creado el rol {role.mention} exitosamente.", color=0x2ecc71)
             await ctx.reply(embed=embed, mention_author=False)
         except Exception as e:
-            await ctx.reply(f"❌ Error al crear el rol: `{e}`", mention_author=False)
+            embed_err = discord.Embed(description=f"❌ Error al crear el rol: `{e}`", color=0x1e1f22)
+            await ctx.reply(embed=embed_err, mention_author=False)
 
     @role_group.command(name="icon")
     @commands.has_permissions(manage_roles=True)
     async def role_icon(self, ctx, role: discord.Role, *, icon_input: str = None):
         if not ctx.guild.premium_tier >= 2:
-            return await ctx.reply("❌ Este servidor necesita ser Nivel 2 de Boost para usar iconos en los roles.", mention_author=False)
+            embed_err = discord.Embed(description="❌ Este servidor necesita ser Nivel 2 de Boost para usar iconos en los roles.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
         if not icon_input:
             embed = discord.Embed(
                 description="### **Comando: role icon**\n\nEstablece el icono de un rol con un emoji, URL o adjunto, o retíralo.\n\n```text\nSintaxis: ,r icon <rol> [emoji|URL|remove]\nEjemplo:  ,r icon Moderadores remove\n```",
@@ -471,13 +457,13 @@ class Moderation(commands.Cog):
             await role.edit(display_icon=icon_data, reason=f"Modificado por {ctx.author}")
             await ctx.message.add_reaction("👍")
         except Exception as e:
-            await ctx.reply(f"❌ No se pudo actualizar el icono: `{e}`", mention_author=False)
+            embed_err = discord.Embed(description=f"❌ No se pudo actualizar el icono: `{e}`", color=0x1e1f22)
+            await ctx.reply(embed=embed_err, mention_author=False)
 
     # ---------------------------------------------------------
     # COMANDO ,drag
     # ---------------------------------------------------------
     @commands.command(name="drag", aliases=["d"])
-    @commands.has_permissions(move_members=True)
     async def drag(self, ctx, *, args: str = None):
         if not args:
             embed = discord.Embed(
@@ -486,6 +472,10 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} ayuda", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
+
+        if not ctx.author.guild_permissions.move_members:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para mover miembros.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         target_channel = None
         members_str = args
@@ -499,7 +489,8 @@ class Moderation(commands.Cog):
             target_channel = ctx.author.voice.channel if ctx.author.voice else None
 
         if not target_channel:
-            return await ctx.reply("❌ Debes estar en un canal de voz o especificar uno válido usando `|`.", mention_author=False)
+            embed_err = discord.Embed(description="❌ Debes estar en un canal de voz o especificar uno válido usando `|`.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         member_items = [m.strip() for m in members_str.split(",")]
         moved_count = 0
@@ -524,16 +515,15 @@ class Moderation(commands.Cog):
 
         await ctx.message.add_reaction("👍" if moved_count > 0 else "❌")
 
-
-  
     # ---------------------------------------------------------
-    # UTILIDADES Y MODERACIÓN
+    # UTILIDADES Y MODERACIÓN (Ayuda pública, ejecución protegida)
     # ---------------------------------------------------------
     @commands.command(name="s", aliases=["snipe"])
     async def snipe(self, ctx):
         snipe_data = self.snipes.get(ctx.channel.id)
         if not snipe_data:
-            return await ctx.reply("No hay ningún mensaje borrado recientemente en este canal.", mention_author=False)
+            embed_err = discord.Embed(description="No hay ningún mensaje borrado recientemente en este canal.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         embed = discord.Embed(description=snipe_data["content"] or "*[Mensaje sin texto o solo archivo]*", color=0x2b2d31, timestamp=snipe_data["created_at"])
         embed.set_author(name=f"{snipe_data['author']} ({snipe_data['author'].id})", icon_url=snipe_data["author"].display_avatar.url)
@@ -542,8 +532,10 @@ class Moderation(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.command(name="cs", aliases=["clearsnipe"])
-    @commands.has_permissions(manage_messages=True)
     async def clear_snipe(self, ctx):
+        if not ctx.author.guild_permissions.manage_messages:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
         if ctx.channel.id in self.snipes:
             del self.snipes[ctx.channel.id]
         try:
@@ -552,7 +544,6 @@ class Moderation(commands.Cog):
             pass
 
     @commands.command(name="c", aliases=["clear", "purge"])
-    @commands.has_permissions(manage_messages=True)
     async def clear(self, ctx, limit: int = None):
         if limit is None:
             embed = discord.Embed(
@@ -562,16 +553,20 @@ class Moderation(commands.Cog):
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
 
+        if not ctx.author.guild_permissions.manage_messages:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
+
         try:
             await ctx.message.delete()
         except Exception:
             pass
 
         deleted = await ctx.channel.purge(limit=limit)
-        msg = await ctx.send(f"✅ Se han borrado **{len(deleted)}** mensajes.", delete_after=4)
+        embed_msg = discord.Embed(description=f"✅ Se han borrado **{len(deleted)}** mensajes.", color=0x2ecc71)
+        await ctx.send(embed=embed_msg, delete_after=4)
 
     @commands.command(name="ban")
-    @commands.has_permissions(ban_members=True)
     async def ban(self, ctx, user_arg: str = None, *, reason: str = "No especificada"):
         if user_arg is None:
             embed = discord.Embed(
@@ -580,6 +575,10 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
+
+        if not ctx.author.guild_permissions.ban_members:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         target_user = None
         if user_arg.startswith("<@") and user_arg.endswith(">"):
@@ -598,16 +597,17 @@ class Moderation(commands.Cog):
             target_user = discord.utils.get(ctx.guild.members, name=user_arg)
 
         if not target_user:
-            return await ctx.reply("❌ No se pudo encontrar al usuario especificado.", mention_author=False)
+            embed_err = discord.Embed(description="❌ No se pudo encontrar al usuario especificado.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         try:
             await ctx.guild.ban(target_user, reason=f"[Ban por {ctx.author}]: {reason}")
             await ctx.message.add_reaction("👍")
         except Exception as e:
-            await ctx.reply(f"❌ No se pudo banear al usuario: `{e}`", mention_author=False)
+            embed_err = discord.Embed(description=f"❌ No se pudo banear al usuario: `{e}`", color=0x1e1f22)
+            await ctx.reply(embed=embed_err, mention_author=False)
 
     @commands.command(name="timeout", aliases=["mute"])
-    @commands.has_permissions(moderate_members=True)
     async def timeout(self, ctx, member: discord.Member = None, duration: str = None, *, reason: str = "No especificada"):
         if member is None or duration is None:
             embed = discord.Embed(
@@ -617,11 +617,16 @@ class Moderation(commands.Cog):
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
 
+        if not ctx.author.guild_permissions.moderate_members:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
+
         unit = duration[-1].lower()
         val = duration[:-1]
         
         if not val.isdigit():
-            return await ctx.reply("❌ Duración inválida. Usa un número seguido de s, m, h o d (Ej: `10m`, `1h`).", mention_author=False)
+            embed_err = discord.Embed(description="❌ Duración inválida. Usa un número seguido de s, m, h o d (Ej: `10m`, `1h`).", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
         
         amount = int(val)
         delta = None
@@ -635,16 +640,17 @@ class Moderation(commands.Cog):
         elif unit == 'd':
             delta = datetime.timedelta(days=amount)
         else:
-            return await ctx.reply("❌ Unidad de tiempo no reconocida. Usa `s`, `m`, `h` o `d`.", mention_author=False)
+            embed_err = discord.Embed(description="❌ Unidad de tiempo no reconocida. Usa `s`, `m`, `h` o `d`.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         try:
             await member.timeout(delta, reason=f"[Timeout por {ctx.author}]: {reason}")
             await ctx.message.add_reaction("👍")
         except Exception as e:
-            await ctx.reply(f"❌ No se pudo aplicar el timeout: `{e}`", mention_author=False)
+            embed_err = discord.Embed(description=f"❌ No se pudo aplicar el timeout: `{e}`", color=0x1e1f22)
+            await ctx.reply(embed=embed_err, mention_author=False)
 
     @commands.command(name="untimeout", aliases=["unmute"])
-    @commands.has_permissions(moderate_members=True)
     async def untimeout(self, ctx, member: discord.Member = None, *, reason: str = "No especificada"):
         if member is None:
             embed = discord.Embed(
@@ -654,17 +660,21 @@ class Moderation(commands.Cog):
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
 
+        if not ctx.author.guild_permissions.moderate_members:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
+
         try:
             await member.timeout(None, reason=f"[Untimeout por {ctx.author}]: {reason}")
             await ctx.message.add_reaction("👍")
         except Exception as e:
-            await ctx.reply(f"❌ No se pudo quitar el timeout: `{e}`", mention_author=False)
+            embed_err = discord.Embed(description=f"❌ No se pudo quitar el timeout: `{e}`", color=0x1e1f22)
+            await ctx.reply(embed=embed_err, mention_author=False)
 
     # ---------------------------------------------------------
     # HARDBANS Y LISTA HARDBAN
     # ---------------------------------------------------------
     @commands.group(name="hb", aliases=["hardban"], invoke_without_command=True)
-    @commands.has_permissions(ban_members=True)
     async def hardban(self, ctx, user: discord.User = None, *, reason: str = "No especificada"):
         if user is None:
             embed = discord.Embed(
@@ -673,12 +683,11 @@ class Moderation(commands.Cog):
             )
             return await ctx.reply(embed=embed, mention_author=False)
 
-        # Verificación de Administrador del Antinuke
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT 1 FROM antinuke_admins WHERE guild_id = ? AND user_id = ?", (ctx.guild.id, ctx.author.id)) as cursor:
                 is_an_admin = await cursor.fetchone()
 
-        if not is_an_admin and ctx.author.id != ctx.guild.owner_id:
+        if not is_an_admin and ctx.author.id != ctx.guild.owner_id and not ctx.author.guild_permissions.ban_members:
             embed = discord.Embed(
                 description=f"⚠️ {ctx.author.mention}: Debes ser **administrador del antinuke** para ejecutar este comando.",
                 color=0x2b2d31
@@ -701,22 +710,24 @@ class Moderation(commands.Cog):
         await ctx.message.add_reaction("👍")
 
     @hardban.command(name="list")
-    @commands.has_permissions(ban_members=True)
     async def hardban_list(self, ctx):
-        """Muestra la lista de usuarios con hardban en el servidor"""
+        if not ctx.author.guild_permissions.ban_members:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
+
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT user_id, reason FROM hardbans WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
                 rows = await cursor.fetchall()
 
         if not rows:
-            return await ctx.reply("No hay usuarios registrados en la lista negra (hardbans).", mention_author=False)
+            embed_err = discord.Embed(description="No hay usuarios registrados en la lista negra (hardbans).", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         description = "\n".join([f"• <@{row[0]}> — Razón: *{row[1]}*" for row in rows[:15]])
         embed = discord.Embed(title="Lista Negra de Hardbans", description=description, color=0xff4b4b)
         await ctx.reply(embed=embed, mention_author=False)
         
     @commands.command(name="unban")
-    @commands.has_permissions(ban_members=True)
     async def unban(self, ctx, user_arg: str = None, *, reason: str = "No especificada"):
         if user_arg is None:
             embed = discord.Embed(
@@ -725,6 +736,10 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
+
+        if not ctx.author.guild_permissions.ban_members:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         target_user = None
         if user_arg.startswith("<@") and user_arg.endswith(">"):
@@ -748,7 +763,8 @@ class Moderation(commands.Cog):
                     break
 
         if not target_user:
-            return await ctx.reply("❌ No se pudo encontrar al usuario para desbanear.", mention_author=False)
+            embed_err = discord.Embed(description="❌ No se pudo encontrar al usuario para desbanear.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
 
         is_hardbanned = False
         async with aiosqlite.connect(DB_NAME) as db:
@@ -762,8 +778,10 @@ class Moderation(commands.Cog):
         view.message = await ctx.reply(embed=embed_confirm, view=view, mention_author=False)
         
     @commands.command(name="lock")
-    @commands.has_permissions(manage_channels=True)
     async def lock(self, ctx, channel: discord.TextChannel = None):
+        if not ctx.author.guild_permissions.manage_channels:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, send_messages=False)
         try:
@@ -772,8 +790,10 @@ class Moderation(commands.Cog):
             pass
 
     @commands.command(name="unlock")
-    @commands.has_permissions(manage_channels=True)
     async def unlock(self, ctx, channel: discord.TextChannel = None):
+        if not ctx.author.guild_permissions.manage_channels:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, send_messages=True)
         try:
@@ -782,23 +802,24 @@ class Moderation(commands.Cog):
             pass
 
     @commands.command(name="hide")
-    @commands.has_permissions(manage_channels=True)
     async def hide(self, ctx, channel: discord.TextChannel = None):
+        if not ctx.author.guild_permissions.manage_channels:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, view_channel=False)
         embed = discord.Embed(description=f"✅ {ctx.author.mention}: Se aplicó **ocultación** a {target.mention}.", color=0x2ecc71)
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.command(name="unhide")
-    @commands.has_permissions(manage_channels=True)
     async def unhide(self, ctx, channel: discord.TextChannel = None):
+        if not ctx.author.guild_permissions.manage_channels:
+            embed_err = discord.Embed(description="⚠️ No tienes permisos para usar este comando.", color=0x1e1f22)
+            return await ctx.reply(embed=embed_err, mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, view_channel=True)
         embed = discord.Embed(description=f"✅ {ctx.author.mention}: Se aplicó **visibilidad** a {target.mention}.", color=0x2ecc71)
         await ctx.reply(embed=embed, mention_author=False)
-
-   
-    
 
     # ---------------------------------------------------------
     # REGLAS Y PREMIUM (CONSERVADOS ÍNTEGRAMENTE)
@@ -912,20 +933,17 @@ class Moderation(commands.Cog):
 
                 "⚡ **Tier 3:**\n"
                 "• Todo lo del Tier 2\n"
+                "• !cleartags\n"
+                "• !autopurge\n"
+                "• !autoplay\n"
                 "• Comando !mstats completo (Muestra una lista de las ultimas 10 personas que han visto tus nombres, tags, avatares)\n\n"
 
                 "🔮 **Tier 4:**\n"
                 "• Todo lo del Tier 3\n"
-                "• !ghostmode (Oculta tus vistas a los historiales de otras personas, no apareceras en el listado de los usuarios con tier 3 que pueden ver quienes han visto sus historiales)\n"
-                "• Permite que en 3 de los servidores que puedes gestionar el bot cambies su perfil (avatar, nombre y banner), si es compartido la cantidad de servidores aumenta a 5\n\n"
+                "• !ghostmode (Oculta tus vistas a los historiales de otras personas, no apareceras en el listado de los usuarios con tier 3 que pueden ver quienes han visto sus historiales)\n\n"
 
                 "👑 **Tier 5:**\n"
-                "• Todo lo del Tier 4\n"
-                "• El número de servidores en los que puedes modificar el perfil del bot sube a 5 en el plan individual y 10 en el compartido\n"
-                "• Ver registros de uso de comandos, permite saber quién uso que comando en cualquier servidor.\n"
-                "• Ver logs en el servidor de soporte (Okaa)\n"
-                "• Ver Auditoria.\n"
-                "• Agregar emojis y stickers al servidor si hay espacios libres\n\n"
+                "• Todo lo del Tier 4\n\n"
 
                 "🍃 **Nota: Para pagar con PayPal abre un ticket**"
             ),
