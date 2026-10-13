@@ -135,7 +135,7 @@ class Music(commands.Cog):
         )
         asyncio.run_coroutine_threadsafe(ctx.send(embed=embed), self.bot.loop)
 
-    @commands.command(name="skip", aliases=["s"])
+    @commands.command(name="skip")
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
