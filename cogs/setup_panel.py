@@ -377,11 +377,12 @@ class SetupPanel(commands.Cog):
             channel = guild.get_channel(row[0])
             if not channel: return
 
-            embed = discord.Embed(description=row[2], color=0xff73fa)
+            embed = discord.Embed(description=row[2], color=0xb845ff)
             guild_icon = guild.icon.url if guild.icon else self.bot.user.display_avatar.url
-            embed.set_author(name=f"New Server Boost!", icon_url=guild_icon)
-            embed.set_thumbnail(url=after.display_avatar.url)
-            await channel.send(content=f"Thanks for boosting, {after.mention}!", embed=embed)
+            embed.set_author(name=f"@{after.name} mejoró el servidor 💜", icon_url=after.display_avatar.url)
+            embed.set_footer(text=f"{guild.premium_subscription_count} boosts • Lvl {guild.premium_tier}", icon_url=guild_icon)
+            
+            await channel.send(content=f"@{after.name} mejoró el servidor 💜", embed=embed)
 
 async def setup(bot):
     await bot.add_cog(SetupPanel(bot))
