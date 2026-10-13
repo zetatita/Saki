@@ -10,12 +10,25 @@ class Jail(commands.Cog):
 
     @commands.command(name="jail")
     @commands.has_permissions(manage_roles=True)
-    async def jail(self, ctx, member: discord.Member, *, reason: str = "Sin razón"):
+    async def jail(self, ctx, member: discord.Member = None, *, reason: str = "Sin razón"):
         """Aísla a un usuario guardando sus roles previos. Uso: ,jail @usuario razón"""
+        if member is None:
+            embed = discord.Embed(
+                title="Comando: jail",
+                description="encarcelamiento: aplica esta acción a un miembro. Pon entre comillas los nombres o apodos con espacios.",
+                color=0x2b2d31
+            )
+            embed.set_author(name=f"{ctx.bot.user.name} ayuda", icon_url=ctx.bot.user.display_avatar.url)
+            embed.add_field(name="\u200b", value="```text\nSintaxis: ,jail <usuario> [motivo]\nEjemplo: ,jail @Juan Incumplir las reglas del servidor\n```", inline=False)
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
         jail_role = discord.utils.get(ctx.guild.roles, name="Jailed")
         if not jail_role:
             return await ctx.send("Crea un rol llamado **Jailed** en el servidor para usar este comando.")
 
+        user_roles = [r.id for r in member.roles if r != ctx.guild.default_log and not r.is_integration() if hasattr(r, 'is_integration')]
+        # Nota: mantenemos la lógica original limpia de roles
         user_roles = [r.id for r in member.roles if r != ctx.guild.default_role and not r.is_integration()]
         roles_json = json.dumps(user_roles)
 
@@ -38,8 +51,19 @@ class Jail(commands.Cog):
 
     @commands.command(name="unjail")
     @commands.has_permissions(manage_roles=True)
-    async def unjail(self, ctx, member: discord.Member):
+    async def unjail(self, ctx, member: discord.Member = None):
         """Restaura los roles de un usuario encarcelado. Uso: ,unjail @usuario"""
+        if member is None:
+            embed = discord.Embed(
+                title="Comando: unjail",
+                description="liberación: aplica esta acción a un miembro. Pon entre comillas los nombres o apodos con espacios.",
+                color=0x2b2d31
+            )
+            embed.set_author(name=f"{ctx.bot.user.name} ayuda", icon_url=ctx.bot.user.display_avatar.url)
+            embed.add_field(name="\u200b", value="```text\nSintaxis: ,unjail <usuario> [motivo]\nEjemplo: ,unjail @Juan Incumplir las reglas del servidor\n```", inline=False)
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute(
                 "SELECT saved_roles FROM jail_data WHERE guild_id = ? AND user_id = ?",
