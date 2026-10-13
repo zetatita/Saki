@@ -2,15 +2,16 @@ import discord
 from discord.ext import commands
 import yt_dlp
 import asyncio
+import aiohttp
+import re
 
-# Configuración de yt-dlp para evitar bloqueos y obtener audio directo
 ytdl_format_options = {
     'format': 'bestaudio/best',
     'extractaudio': True,
     'audioformat': 'mp3',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
-    'noplaylist': True,
+    'noplaylist': False,
     'nocheckcertificate': True,
     'ignoreerrors': False,
     'logtostderr': False,
@@ -39,10 +40,19 @@ class YTDLSource(discord.PCMVolumeTransformer):
     @classmethod
     async def create_source(cls, ctx, search: str, *, loop=None):
         loop = loop or asyncio.get_event_loop()
+
+        # Si es un enlace de Spotify, obtenemos el título/artista usando la página web o oEmbed para buscarlo en YouTube
+        if "spotify.com" in search:
+            async with aiohttp.ClientSession() as session:
+                # Usamos el servicio oEmbed público de Spotify para obtener el título limpio de la canción/álbum
+                async with session.get(f"https://open.spotify.com/oembed?url={search}") as resp:
+                    if resp.status == 200:
+                        json_data = await resp.json()
+                        search = json_data.get("title", search)
+
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(search, download=False))
 
         if 'entries' in data:
-            # Tomar el primer resultado si es una búsqueda
             data = data['entries'][0]
 
         filename = data['url']
@@ -59,13 +69,11 @@ class Music(commands.Cog):
             self.queue[guild_id] = []
         return self.queue[guild_id]
 
-    # ==================== COMANDO: ,play / ,p ====================
     @commands.command(name="play", aliases=["p"])
     async def play(self, ctx, *, search: str = None):
-        """Reproduce una canción o la añade a la cola estilo Bleed."""
         if search is None:
             embed = discord.Embed(
-                description="### **Command: play**\n\nPlays a song from YouTube\n\n```text\nSyntax: ,play <url o nombre>\nExample: ,play central cee dot ninedee\n```",
+                description="### **Command: play**\n\nPlays a song from YouTube or Spotify\n\n```text\nSyntax: ,play <url de spotify/youtube o nombre>\nExample: ,play [https://open.spotify.com/track/](https://open.spotify.com/track/)...\n```",
                 color=0x1e1f22
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
@@ -91,7 +99,7 @@ class Music(commands.Cog):
             try:
                 player = await YTDLSource.create_source(ctx, search, loop=self.bot.loop)
             except Exception as e:
-                embed_err = discord.Embed(description=f"❌ Ocurrió un error al buscar la canción: `{e}`", color=0x1e1f22)
+                embed_err = discord.Embed(description=f"❌ Ocurrió un error al procesar el enlace o búsqueda: `{e}`", color=0x1e1f22)
                 return await ctx.reply(embed=embed_err, mention_author=False)
 
         server_queue = self.get_queue(ctx.guild.id)
@@ -127,10 +135,8 @@ class Music(commands.Cog):
         )
         asyncio.run_coroutine_threadsafe(ctx.send(embed=embed), self.bot.loop)
 
-    # ==================== COMANDO: ,skip / ,s ====================
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx):
-        """Salta la canción actual."""
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             embed = discord.Embed(description="⏭️ Canción saltada.", color=0x2b2d31)
@@ -139,10 +145,8 @@ class Music(commands.Cog):
             embed_err = discord.Embed(description="❌ No hay ninguna canción reproduciéndose actualmente.", color=0x1e1f22)
             await ctx.reply(embed=embed_err, mention_author=False)
 
-    # ==================== COMANDO: ,queue / ,q ====================
     @commands.command(name="queue", aliases=["q"])
     async def queue(self, ctx):
-        """Muestra la cola de reproducción actual."""
         server_queue = self.get_queue(ctx.guild.id)
         if not server_queue:
             embed = discord.Embed(description="Music queue is currently empty.", color=0x1e1f22)
@@ -153,10 +157,8 @@ class Music(commands.Cog):
         embed = discord.Embed(title="Server Music Queue", description=description, color=0x2b2d31)
         await ctx.reply(embed=embed, mention_author=False)
 
-    # ==================== COMANDO: ,stop / ,disconnect ====================
     @commands.command(name="stop", aliases=["dc", "disconnect"])
     async def stop(self, ctx):
-        """Detiene la música y desconecta al bot del canal de voz."""
         server_queue = self.get_queue(ctx.guild.id)
         server_queue.clear()
 
