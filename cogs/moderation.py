@@ -3,7 +3,6 @@ from discord.ext import commands
 import aiosqlite
 import re
 import aiohttp
-import datetime
 from config import DB_NAME
 
 # =========================================================
@@ -194,7 +193,6 @@ class Moderation(commands.Cog):
         self.bot = bot
         self.snipes = {}
         self.active_jtc = {}
-
     # ---------------------------------------------------------
     # LISTENERS GLOBALES
     # ---------------------------------------------------------
@@ -266,35 +264,25 @@ class Moderation(commands.Cog):
             """)
             async with db.execute("SELECT category_id, jtc_channel_id FROM jtc_config WHERE guild_id = ?", (member.guild.id,)) as cursor:
                 row = await cursor.fetchone()
+                if row:
+                    cat_id, jtc_ch_id = row
+                    if after.channel and after.channel.id == jtc_ch_id:
+                        category = member.guild.get_channel(cat_id)
+                        new_vc = await member.guild.create_voice_channel(
+                            name=f"🔊 ┃ {member.name}",
+                            category=category,
+                            reason=f"Canal temporal JTC de {member}"
+                        )
+                        await member.move_to(new_vc)
+                        self.active_jtc[new_vc.id] = member.id
 
-        jtc_ch_id = None
-        cat_id = None
-
-        if row:
-            cat_id, jtc_ch_id = row
-
-        is_jtc_channel = (jtc_ch_id and after.channel and after.channel.id == jtc_ch_id) or (after.channel and "jtc" in after.channel.name.lower())
-
-        if is_jtc_channel:
-            category = member.guild.get_channel(cat_id) if cat_id else after.channel.category
-            try:
-                new_vc = await member.guild.create_voice_channel(
-                    name=f"🔊 ┃ {member.name}",
-                    category=category,
-                    reason=f"Canal temporal JTC de {member}"
-                )
-                await member.move_to(new_vc)
-                self.active_jtc[new_vc.id] = member.id
-            except Exception as e:
-                print(f"❌ Error al crear el canal JTC: {e}")
-
-        if before.channel and before.channel.id in self.active_jtc:
-            if len(before.channel.members) == 0:
-                try:
-                    await before.channel.delete(reason="Canal temporal JTC vacío")
-                except Exception:
-                    pass
-                self.active_jtc.pop(before.channel.id, None)
+                    if before.channel and before.channel.id in self.active_jtc:
+                        if len(before.channel.members) == 0:
+                            try:
+                                await before.channel.delete(reason="Canal temporal JTC vacío")
+                            except Exception:
+                                pass
+                            self.active_jtc.pop(before.channel.id, None)
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
@@ -306,13 +294,56 @@ class Moderation(commands.Cog):
             "created_at": message.created_at,
             "attachment": message.attachments[0].url if message.attachments else None
         }
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS jtc_config (
+                    guild_id INTEGER PRIMARY KEY, category_id INTEGER, jtc_channel_id INTEGER
+                )
+            """)
+            async with db.execute("SELECT category_id, jtc_channel_id FROM jtc_config WHERE guild_id = ?", (member.guild.id,)) as cursor:
+                row = await cursor.fetchone()
 
+        jtc_ch_id = None
+        cat_id = None
+
+        if row:
+            cat_id, jtc_ch_id = row
+
+        # 1. Crear canal si entra al JTC configurado O si el canal al que entra se llama "➕ ┃ jtc"
+        is_jtc_channel = (jtc_ch_id and after.channel and after.channel.id == jtc_ch_id) or (after.channel and "jtc" in after.channel.name.lower())
+
+        if is_jtc_channel:
+            # Si no hay categoría guardada, usamos la del canal actual o la primera disponible
+            category = member.guild.get_channel(cat_id) if cat_id else after.channel.category
+            
+            try:
+                new_vc = await member.guild.create_voice_channel(
+                    name=f"🔊 ┃ {member.name}",
+                    category=category,
+                    reason=f"Canal temporal JTC de {member}"
+                )
+                await member.move_to(new_vc)
+                self.active_jtc[new_vc.id] = member.id
+            except Exception as e:
+                print(f"❌ Error al crear el canal JTC: {e}")
+
+        # 2. Eliminar canal temporal automáticamente cuando se queda sin miembros
+        if before.channel and before.channel.id in self.active_jtc:
+            if len(before.channel.members) == 0:
+                try:
+                    await before.channel.delete(reason="Canal temporal JTC vacío")
+                except Exception:
+                    pass
+                self.active_jtc.pop(before.channel.id, None)
     # ---------------------------------------------------------
     # COMANDO SETUP VC & INTERFACE
     # ---------------------------------------------------------
     @commands.command(name="setupvc", aliases=["setupinterface"])
     @commands.has_permissions(administrator=True)
     async def setup_vc(self, ctx):
+        # Primero eliminamos el mensaje del comando si es posible
         try:
             await ctx.message.delete()
         except discord.HTTPException:
@@ -324,10 +355,12 @@ class Moderation(commands.Cog):
         }
 
         try:
+            # 1. Crear categoría y canales
             category = await guild.create_category("VC", reason="Configuración de canales de voz y panel")
             text_channel = await guild.create_text_channel("📝 ┃ interface", category=category, overwrites=overwrites)
             voice_channel = await guild.create_voice_channel("➕ ┃ jtc", category=category)
 
+            # 2. Guardar en la base de datos
             async with aiosqlite.connect(DB_NAME) as db:
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS jtc_config (
@@ -340,6 +373,7 @@ class Moderation(commands.Cog):
                 )
                 await db.commit()
 
+            # 3. Enviar el embed con la vista de botones
             embed = discord.Embed(
                 description=(
                     "Puede utilizar esta interfaz para administrar su canal de voz.\n\n"
@@ -354,6 +388,7 @@ class Moderation(commands.Cog):
             await ctx.send(f"✅ ¡Sistema de canales de voz e interfaz configurado correctamente en la categoría {category.name}!", delete_after=10)
 
         except Exception as e:
+            # Si ocurre cualquier error, lo imprimimos en la consola de tu terminal para saber exacto qué falló
             print(f"❌ Error detallado en setupvc: {e}")
             await ctx.send(f"❌ Ocurrió un error al configurar el panel: `{e}`", delete_after=15)
 
@@ -372,11 +407,9 @@ class Moderation(commands.Cog):
         paginator.message = await ctx.reply(embed=embed, view=paginator, mention_author=False)
 
     @commands.group(name="r", invoke_without_command=True)
+    @commands.has_permissions(manage_roles=True)
     async def role_group(self, ctx, member: discord.Member = None, *, roles_input: str = None):
         if member and roles_input:
-            if not ctx.author.guild_permissions.manage_roles:
-                return await ctx.reply("⚠️ No tienes permisos para gestionar roles.", mention_author=False)
-
             role_names = [r.strip() for r in roles_input.split(",")]
             assigned, removed = [], []
             for r_name in role_names:
@@ -444,6 +477,7 @@ class Moderation(commands.Cog):
     # COMANDO ,drag
     # ---------------------------------------------------------
     @commands.command(name="drag", aliases=["d"])
+    @commands.has_permissions(move_members=True)
     async def drag(self, ctx, *, args: str = None):
         if not args:
             embed = discord.Embed(
@@ -452,9 +486,6 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} ayuda", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
-
-        if not ctx.author.guild_permissions.move_members:
-            return await ctx.reply("⚠️ No tienes permisos para mover miembros.", mention_author=False)
 
         target_channel = None
         members_str = args
@@ -493,8 +524,10 @@ class Moderation(commands.Cog):
 
         await ctx.message.add_reaction("👍" if moved_count > 0 else "❌")
 
+
+  
     # ---------------------------------------------------------
-    # UTILIDADES Y MODERACIÓN (Ayuda pública, ejecución protegida)
+    # UTILIDADES Y MODERACIÓN
     # ---------------------------------------------------------
     @commands.command(name="s", aliases=["snipe"])
     async def snipe(self, ctx):
@@ -509,9 +542,8 @@ class Moderation(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.command(name="cs", aliases=["clearsnipe"])
+    @commands.has_permissions(manage_messages=True)
     async def clear_snipe(self, ctx):
-        if not ctx.author.guild_permissions.manage_messages:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
         if ctx.channel.id in self.snipes:
             del self.snipes[ctx.channel.id]
         try:
@@ -520,6 +552,7 @@ class Moderation(commands.Cog):
             pass
 
     @commands.command(name="c", aliases=["clear", "purge"])
+    @commands.has_permissions(manage_messages=True)
     async def clear(self, ctx, limit: int = None):
         if limit is None:
             embed = discord.Embed(
@@ -528,9 +561,6 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
-
-        if not ctx.author.guild_permissions.manage_messages:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
 
         try:
             await ctx.message.delete()
@@ -541,6 +571,7 @@ class Moderation(commands.Cog):
         msg = await ctx.send(f"✅ Se han borrado **{len(deleted)}** mensajes.", delete_after=4)
 
     @commands.command(name="ban")
+    @commands.has_permissions(ban_members=True)
     async def ban(self, ctx, user_arg: str = None, *, reason: str = "No especificada"):
         if user_arg is None:
             embed = discord.Embed(
@@ -549,9 +580,6 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
-
-        if not ctx.author.guild_permissions.ban_members:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
 
         target_user = None
         if user_arg.startswith("<@") and user_arg.endswith(">"):
@@ -579,6 +607,7 @@ class Moderation(commands.Cog):
             await ctx.reply(f"❌ No se pudo banear al usuario: `{e}`", mention_author=False)
 
     @commands.command(name="timeout", aliases=["mute"])
+    @commands.has_permissions(moderate_members=True)
     async def timeout(self, ctx, member: discord.Member = None, duration: str = None, *, reason: str = "No especificada"):
         if member is None or duration is None:
             embed = discord.Embed(
@@ -587,9 +616,6 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
-
-        if not ctx.author.guild_permissions.moderate_members:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
 
         unit = duration[-1].lower()
         val = duration[:-1]
@@ -618,6 +644,7 @@ class Moderation(commands.Cog):
             await ctx.reply(f"❌ No se pudo aplicar el timeout: `{e}`", mention_author=False)
 
     @commands.command(name="untimeout", aliases=["unmute"])
+    @commands.has_permissions(moderate_members=True)
     async def untimeout(self, ctx, member: discord.Member = None, *, reason: str = "No especificada"):
         if member is None:
             embed = discord.Embed(
@@ -626,9 +653,6 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
-
-        if not ctx.author.guild_permissions.moderate_members:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
 
         try:
             await member.timeout(None, reason=f"[Untimeout por {ctx.author}]: {reason}")
@@ -640,6 +664,7 @@ class Moderation(commands.Cog):
     # HARDBANS Y LISTA HARDBAN
     # ---------------------------------------------------------
     @commands.group(name="hb", aliases=["hardban"], invoke_without_command=True)
+    @commands.has_permissions(ban_members=True)
     async def hardban(self, ctx, user: discord.User = None, *, reason: str = "No especificada"):
         if user is None:
             embed = discord.Embed(
@@ -648,12 +673,12 @@ class Moderation(commands.Cog):
             )
             return await ctx.reply(embed=embed, mention_author=False)
 
-        # Verificación de Administrador del Antinuke o permisos de ban
+        # Verificación de Administrador del Antinuke
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT 1 FROM antinuke_admins WHERE guild_id = ? AND user_id = ?", (ctx.guild.id, ctx.author.id)) as cursor:
                 is_an_admin = await cursor.fetchone()
 
-        if not is_an_admin and ctx.author.id != ctx.guild.owner_id and not ctx.author.guild_permissions.ban_members:
+        if not is_an_admin and ctx.author.id != ctx.guild.owner_id:
             embed = discord.Embed(
                 description=f"⚠️ {ctx.author.mention}: Debes ser **administrador del antinuke** para ejecutar este comando.",
                 color=0x2b2d31
@@ -676,10 +701,8 @@ class Moderation(commands.Cog):
         await ctx.message.add_reaction("👍")
 
     @hardban.command(name="list")
+    @commands.has_permissions(ban_members=True)
     async def hardban_list(self, ctx):
-        if not ctx.author.guild_permissions.ban_members:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
-
         """Muestra la lista de usuarios con hardban en el servidor"""
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT user_id, reason FROM hardbans WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
@@ -693,6 +716,7 @@ class Moderation(commands.Cog):
         await ctx.reply(embed=embed, mention_author=False)
         
     @commands.command(name="unban")
+    @commands.has_permissions(ban_members=True)
     async def unban(self, ctx, user_arg: str = None, *, reason: str = "No especificada"):
         if user_arg is None:
             embed = discord.Embed(
@@ -701,9 +725,6 @@ class Moderation(commands.Cog):
             )
             embed.set_author(name=f"{self.bot.user.name} help", icon_url=self.bot.user.display_avatar.url)
             return await ctx.reply(embed=embed, mention_author=False)
-
-        if not ctx.author.guild_permissions.ban_members:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
 
         target_user = None
         if user_arg.startswith("<@") and user_arg.endswith(">"):
@@ -741,9 +762,8 @@ class Moderation(commands.Cog):
         view.message = await ctx.reply(embed=embed_confirm, view=view, mention_author=False)
         
     @commands.command(name="lock")
+    @commands.has_permissions(manage_channels=True)
     async def lock(self, ctx, channel: discord.TextChannel = None):
-        if not ctx.author.guild_permissions.manage_channels:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, send_messages=False)
         try:
@@ -752,9 +772,8 @@ class Moderation(commands.Cog):
             pass
 
     @commands.command(name="unlock")
+    @commands.has_permissions(manage_channels=True)
     async def unlock(self, ctx, channel: discord.TextChannel = None):
-        if not ctx.author.guild_permissions.manage_channels:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, send_messages=True)
         try:
@@ -763,25 +782,26 @@ class Moderation(commands.Cog):
             pass
 
     @commands.command(name="hide")
+    @commands.has_permissions(manage_channels=True)
     async def hide(self, ctx, channel: discord.TextChannel = None):
-        if not ctx.author.guild_permissions.manage_channels:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, view_channel=False)
         embed = discord.Embed(description=f"✅ {ctx.author.mention}: Se aplicó **ocultación** a {target.mention}.", color=0x2ecc71)
         await ctx.reply(embed=embed, mention_author=False)
 
     @commands.command(name="unhide")
+    @commands.has_permissions(manage_channels=True)
     async def unhide(self, ctx, channel: discord.TextChannel = None):
-        if not ctx.author.guild_permissions.manage_channels:
-            return await ctx.reply("⚠️ No tienes permisos para usar este comando.", mention_author=False)
         target = channel or ctx.channel
         await target.set_permissions(ctx.guild.default_role, view_channel=True)
         embed = discord.Embed(description=f"✅ {ctx.author.mention}: Se aplicó **visibilidad** a {target.mention}.", color=0x2ecc71)
         await ctx.reply(embed=embed, mention_author=False)
 
+   
+    
+
     # ---------------------------------------------------------
-    # REGLAS Y PREMIUM
+    # REGLAS Y PREMIUM (CONSERVADOS ÍNTEGRAMENTE)
     # ---------------------------------------------------------
     @commands.command(name="reglas", aliases=["rules"])
     @commands.has_permissions(administrator=True)
@@ -892,17 +912,20 @@ class Moderation(commands.Cog):
 
                 "⚡ **Tier 3:**\n"
                 "• Todo lo del Tier 2\n"
-                "• !cleartags\n"
-                "• !autopurge\n"
-                "• !autoplay\n"
                 "• Comando !mstats completo (Muestra una lista de las ultimas 10 personas que han visto tus nombres, tags, avatares)\n\n"
 
                 "🔮 **Tier 4:**\n"
                 "• Todo lo del Tier 3\n"
-                "• !ghostmode (Oculta tus vistas a los historiales de otras personas, no apareceras en el listado de los usuarios con tier 3 que pueden ver quienes han visto sus historiales)\n\n"
+                "• !ghostmode (Oculta tus vistas a los historiales de otras personas, no apareceras en el listado de los usuarios con tier 3 que pueden ver quienes han visto sus historiales)\n"
+                "• Permite que en 3 de los servidores que puedes gestionar el bot cambies su perfil (avatar, nombre y banner), si es compartido la cantidad de servidores aumenta a 5\n\n"
 
                 "👑 **Tier 5:**\n"
-                "• Todo lo del Tier 4\n\n"
+                "• Todo lo del Tier 4\n"
+                "• El número de servidores en los que puedes modificar el perfil del bot sube a 5 en el plan individual y 10 en el compartido\n"
+                "• Ver registros de uso de comandos, permite saber quién uso que comando en cualquier servidor.\n"
+                "• Ver logs en el servidor de soporte (Okaa)\n"
+                "• Ver Auditoria.\n"
+                "• Agregar emojis y stickers al servidor si hay espacios libres\n\n"
 
                 "🍃 **Nota: Para pagar con PayPal abre un ticket**"
             ),
