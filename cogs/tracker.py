@@ -59,9 +59,9 @@ class ProfileSelect(discord.ui.Select):
         self.target_user = target_user
         
         options = [
-            discord.SelectOption(label="Nombres", description="Historial de nombres", emoji="🌐", value="names", default=(current_selected == "names")),
+            discord.SelectOption(label="Nombres", description="Historial de apodos y nombres visibles", emoji="🌐", value="names", default=(current_selected == "names")),
             discord.SelectOption(label="Avatares", description="Historial de fotos de perfil", emoji="📦", value="avatars", default=(current_selected == "avatars")),
-            discord.SelectOption(label="Tags", description="Tags y apodos anteriores", emoji="🏷️", value="tags", default=(current_selected == "tags")),
+            discord.SelectOption(label="Tags", description="Historial de nombres de usuario (@handles)", emoji="🏷️", value="tags", default=(current_selected == "tags")),
             discord.SelectOption(label="Ficha", description="Información general del usuario", emoji="📊", value="ficha", default=(current_selected == "ficha"))
         ]
         super().__init__(placeholder="Selecciona una opción...", options=options, min_values=1, max_values=1, row=0)
@@ -116,19 +116,19 @@ class ProfileView(discord.ui.View):
             description=f"📊 **Estadísticas de {self.target_user.name}**\n\nEl historial se registra automáticamente al cambiar de apodo o avatar.",
             color=0x2b2d31
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def update_message(self, interaction: discord.Interaction):
         async with aiosqlite.connect(DB_NAME) as db:
             if self.current_selected == "names":
                 async with db.execute(
-                    "SELECT username, timestamp FROM user_names WHERE user_id = ? ORDER BY timestamp DESC", 
+                    "SELECT display_name, timestamp FROM user_names WHERE user_id = ? ORDER BY timestamp DESC", 
                     (self.target_user.id,)
                 ) as cursor:
                     rows = await cursor.fetchall()
 
                 if not rows:
-                    rows = [(self.target_user.name, int(time.time()))]
+                    rows = [(self.target_user.display_name, int(time.time()))]
 
                 self.total_pages = max(1, (len(rows) - 1) // self.per_page + 1)
                 start = self.current_page * self.per_page
@@ -245,7 +245,7 @@ class Tracker(commands.Cog):
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS user_names (
                     user_id INTEGER,
-                    username TEXT,
+                    display_name TEXT,
                     timestamp INTEGER
                 )
             """)
@@ -268,12 +268,14 @@ class Tracker(commands.Cog):
     async def cog_load(self):
         await self.init_db()
 
-    async def record_user(self, user: discord.User):
+    async def record_user(self, user: discord.User_or_Member):
         avatar_url = str(user.display_avatar.url)
-        username = user.name
-        tag = getattr(user, "discriminator", "0")
-        if tag == "0":
-            tag = user.name
+        
+        # Apodo / Display Name (para la tabla de nombres)
+        display_name = getattr(user, "display_name", user.name)
+        
+        # Nombre de usuario global / Handle (@loudvibe) (para la tabla de tags)
+        username_handle = user.name
 
         try:
             fetched_user = await self.bot.fetch_user(user.id)
@@ -284,21 +286,25 @@ class Tracker(commands.Cog):
         current_time = int(time.time())
 
         async with aiosqlite.connect(DB_NAME) as db:
+            # 1. Guardar Avatar
             async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                 row_avatar = await cursor.fetchone()
             if not row_avatar or row_avatar[0] != avatar_url:
                 await db.execute("INSERT INTO user_avatars (user_id, avatar_url, timestamp) VALUES (?, ?, ?)", (user.id, avatar_url, current_time))
 
-            async with db.execute("SELECT username FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+            # 2. Guardar Nombre Visible / Apodo (display_name -> ej. "zeta")
+            async with db.execute("SELECT display_name FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                 row_name = await cursor.fetchone()
-            if not row_name or row_name[0] != username:
-                await db.execute("INSERT INTO user_names (user_id, username, timestamp) VALUES (?, ?, ?)", (user.id, username, current_time))
+            if not row_name or row_name[0] != display_name:
+                await db.execute("INSERT INTO user_names (user_id, display_name, timestamp) VALUES (?, ?, ?)", (user.id, display_name, current_time))
 
+            # 3. Guardar Username Global (username -> ej. "loudvibe")
             async with db.execute("SELECT tag FROM user_tags WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                 row_tag = await cursor.fetchone()
-            if not row_tag or row_tag[0] != tag:
-                await db.execute("INSERT INTO user_tags (user_id, tag, timestamp) VALUES (?, ?, ?)", (user.id, tag, current_time))
+            if not row_tag or row_tag[0] != username_handle:
+                await db.execute("INSERT INTO user_tags (user_id, tag, timestamp) VALUES (?, ?, ?)", (user.id, username_handle, current_time))
 
+            # 4. Guardar Banner
             if banner_url:
                 async with db.execute("SELECT banner_url FROM user_banners WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                     row_banner = await cursor.fetchone()
@@ -344,7 +350,8 @@ class Tracker(commands.Cog):
     @commands.command(name="avatars", aliases=["historyavatars"])
     async def avatars(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        await self.record_user(target)
+        member = ctx.guild.get_member(target.id) if ctx.guild else target
+        await self.record_user(member)
 
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 25", (target.id,)) as cursor:
@@ -368,16 +375,18 @@ class Tracker(commands.Cog):
     @commands.command(name="usernames", aliases=["names", "historynames"])
     async def usernames(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        await self.record_user(target)
+        member = ctx.guild.get_member(target.id) if ctx.guild else target
+        await self.record_user(member)
 
         view = ProfileView(target, current_selected="names", current_page=0)
         
         async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT username, timestamp FROM user_names WHERE user_id = ? ORDER BY timestamp DESC", (target.id,)) as cursor:
+            async with db.execute("SELECT display_name, timestamp FROM user_names WHERE user_id = ? ORDER BY timestamp DESC", (target.id,)) as cursor:
                 rows = await cursor.fetchall()
 
+        display_fallback = getattr(member, "display_name", target.name)
         if not rows:
-            rows = [(target.name, int(time.time()))]
+            rows = [(display_fallback, int(time.time()))]
 
         total_pages = max(1, (len(rows) - 1) // 10 + 1)
         page_items = rows[:10]
@@ -402,7 +411,8 @@ class Tracker(commands.Cog):
     @commands.command(name="tags", aliases=["historytags"])
     async def tags(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        await self.record_user(target)
+        member = ctx.guild.get_member(target.id) if ctx.guild else target
+        await self.record_user(member)
 
         view = ProfileView(target, current_selected="tags", current_page=0)
 
