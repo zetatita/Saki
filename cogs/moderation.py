@@ -212,35 +212,7 @@ class Moderation(commands.Cog):
     # ---------------------------------------------------------
     # LISTENERS GLOBALES
     # ---------------------------------------------------------
-    @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member):
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS hardbans (
-                    guild_id INTEGER, user_id INTEGER, reason TEXT, moderator_id INTEGER,
-                    banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (guild_id, user_id)
-                )
-            """)
-            async with db.execute("SELECT reason FROM hardbans WHERE guild_id = ? AND user_id = ?", (member.guild.id, member.id)) as cursor:
-                row = await cursor.fetchone()
-                if row:
-                    try:
-                        await member.ban(reason=f"[Hardban Automático]: {row[0]}")
-                    except discord.HTTPException:
-                        pass
-
-            await db.execute("CREATE TABLE IF NOT EXISTS welcomes (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-            async with db.execute("SELECT channel_id, message FROM welcomes WHERE guild_id = ?", (member.guild.id,)) as cursor:
-                w_row = await cursor.fetchone()
-                if w_row:
-                    ch_id, text = w_row
-                    channel = member.guild.get_channel(ch_id)
-                    if channel:
-                        formatted_text = text.replace("{user}", member.mention).replace("{server}", member.guild.name)
-                        embed = discord.Embed(description=formatted_text, color=0x2b2d31)
-                        embed.set_author(name=f"Welcome, @{member.name}!", icon_url=member.display_avatar.url)
-                        await channel.send(embed=embed)
-
+    
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
         async with aiosqlite.connect(DB_NAME) as db:
