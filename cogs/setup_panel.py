@@ -44,7 +44,12 @@ class ConfigScriptModal(discord.ui.Modal):
 
 class ChatChannelSelect(discord.ui.ChannelSelect):
     def __init__(self, parent_view):
-        super().__init__(placeholder="Canal para el botón 'Chat Here'...", channel_types=[discord.ChannelType.text], row=1)
+        # ✅ PERMITE CANALES DE TEXTO Y DE ANUNCIOS/NOTICIAS
+        super().__init__(
+            placeholder="Canal para el botón 'Chat Here'...", 
+            channel_types=[discord.ChannelType.text, discord.ChannelType.news], 
+            row=1
+        )
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
@@ -211,7 +216,12 @@ class ConfigPanelView(discord.ui.View):
 
 class ChannelSelectMenu(discord.ui.ChannelSelect):
     def __init__(self, table_name: str, parent_view: ConfigPanelView):
-        super().__init__(placeholder="Selecciona el canal...", channel_types=[discord.ChannelType.text], row=0)
+        # ✅ PERMITE CANALES DE TEXTO Y DE ANUNCIOS/NOTICIAS
+        super().__init__(
+            placeholder="Selecciona el canal...", 
+            channel_types=[discord.ChannelType.text, discord.ChannelType.news], 
+            row=0
+        )
         self.table_name = table_name
         self.parent_view = parent_view
 
@@ -354,7 +364,6 @@ class SetupPanel(commands.Cog):
             embed.set_author(name=f"@{after.name} mejoró el servidor 💜", icon_url=after.display_avatar.url)
             embed.set_footer(text=f"{guild.premium_subscription_count} boosts • Lvl {guild.premium_tier}", icon_url=guild_icon)
             
-            # Enviamos únicamente el embed limpio para evitar duplicidades de texto en el canal
             await channel.send(embed=embed)
 
 async def setup(bot):
