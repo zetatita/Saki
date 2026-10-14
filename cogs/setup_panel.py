@@ -330,59 +330,32 @@ class SetupPanel(commands.Cog):
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member):
-        guild = member.guild
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT channel_id, status, message, chat_channel_id, vc_channel_id FROM welcomes WHERE guild_id = ?", (guild.id,)) as cursor:
-                row = await cursor.fetchone()
-        if not row or row[1] != 1 or not row[0]: return
-        channel = guild.get_channel(row[0])
-        if not channel: return
-
-        ch_id, status, msg, chat_ch, vc_ch = row
-
-        embed = discord.Embed(description=msg, color=0x2b2d31)
-        guild_icon = guild.icon.url if guild.icon else self.bot.user.display_avatar.url
-        embed.set_author(name=f"We now have {guild.member_count} members!", icon_url=guild_icon)
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text=f"Rep /{guild.name.lower()} for Pic Perms!")
-        
-        view = BleedButtonsView(guild, chat_ch, vc_ch)
-        await channel.send(content=f"Welcome, {member.mention}!", embed=embed, view=view)
-
-    @commands.Cog.listener()
-    async def on_member_remove(self, member: discord.Member):
-        guild = member.guild
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT channel_id, status, message FROM goodbyes WHERE guild_id = ?", (guild.id,)) as cursor:
-                row = await cursor.fetchone()
-        if not row or row[1] != 1 or not row[0]: return
-        channel = guild.get_channel(row[0])
-        if not channel: return
-
-        embed = discord.Embed(description=row[2], color=0x2b2d31)
-        guild_icon = guild.icon.url if guild.icon else self.bot.user.display_avatar.url
-        embed.set_author(name=f"Goodbye, {member.name}", icon_url=guild_icon)
-        embed.set_thumbnail(url=member.display_avatar.url)
-        await channel.send(content=f"Goodbye, {member.mention}.", embed=embed)
-
-    @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.premium_since is None and after.premium_since is not None:
             guild = after.guild
             async with aiosqlite.connect(DB_NAME) as db:
                 async with db.execute("SELECT channel_id, status, message FROM boosts WHERE guild_id = ?", (guild.id,)) as cursor:
                     row = await cursor.fetchone()
-            if not row or row[1] != 1 or not row[0]: return
+            
+            if not row or row[1] != 1 or not row[0]: 
+                return
+            
             channel = guild.get_channel(row[0])
-            if not channel: return
+            if not channel: 
+                return
 
-            embed = discord.Embed(description=row[2], color=0xb845ff)
+            raw_msg = row[2] or "¡Gracias por mejorar el servidor, {user}!"
+            formatted_msg = raw_msg.replace("{user}", after.mention)\
+                                  .replace("{server}", guild.name)\
+                                  .replace("{count}", str(guild.premium_subscription_count))
+
+            embed = discord.Embed(description=formatted_msg, color=0xb845ff)
             guild_icon = guild.icon.url if guild.icon else self.bot.user.display_avatar.url
             embed.set_author(name=f"@{after.name} mejoró el servidor 💜", icon_url=after.display_avatar.url)
             embed.set_footer(text=f"{guild.premium_subscription_count} boosts • Lvl {guild.premium_tier}", icon_url=guild_icon)
             
-            await channel.send(content=f"@{after.name} mejoró el servidor 💜", embed=embed)
+            # Enviamos únicamente el embed limpio para evitar duplicidades de texto en el canal
+            await channel.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(SetupPanel(bot))
