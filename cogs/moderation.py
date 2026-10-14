@@ -227,20 +227,7 @@ class Moderation(commands.Cog):
                         embed = discord.Embed(description=formatted_text, color=0x2b2d31)
                         await channel.send(embed=embed)
 
-    @commands.Cog.listener()
-    async def on_member_update(self, before: discord.Member, after: discord.Member):
-        if before.premium_since is None and after.premium_since is not None:
-            async with aiosqlite.connect(DB_NAME) as db:
-                await db.execute("CREATE TABLE IF NOT EXISTS boosts (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, message TEXT)")
-                async with db.execute("SELECT channel_id, message FROM boosts WHERE guild_id = ?", (after.guild.id,)) as cursor:
-                    b_row = await cursor.fetchone()
-                    if b_row:
-                        ch_id, text = b_row
-                        channel = after.guild.get_channel(ch_id)
-                        if channel:
-                            formatted_text = text.replace("{user}", after.mention).replace("{server}", after.guild.name)
-                            embed = discord.Embed(description=formatted_text, color=0xff73fa)
-                            await channel.send(embed=embed)
+    
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
