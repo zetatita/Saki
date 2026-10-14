@@ -53,7 +53,7 @@ class VIP(commands.Cog):
                     description=f"¡Gracias por mejorar {guild.name}, {after.mention}! 💜\n"
                                 "Ya puedes usar estos comandos:\n\n"
                                 "```text\n"
-                                "!clearavatars, !clearnames, !tags\n"
+                                ",clearavatars, ,clearnames, ,tags\n"
                                 "```",
                     color=0x9b59b6
                 )
