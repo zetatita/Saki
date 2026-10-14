@@ -268,13 +268,9 @@ class Tracker(commands.Cog):
     async def cog_load(self):
         await self.init_db()
 
-    async def record_user(self, user: discord.User_or_Member):
+    async def record_user(self, user):
         avatar_url = str(user.display_avatar.url)
-        
-        # Apodo / Display Name (para la tabla de nombres)
         display_name = getattr(user, "display_name", user.name)
-        
-        # Nombre de usuario global / Handle (@loudvibe) (para la tabla de tags)
         username_handle = user.name
 
         try:
@@ -286,25 +282,21 @@ class Tracker(commands.Cog):
         current_time = int(time.time())
 
         async with aiosqlite.connect(DB_NAME) as db:
-            # 1. Guardar Avatar
             async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                 row_avatar = await cursor.fetchone()
             if not row_avatar or row_avatar[0] != avatar_url:
                 await db.execute("INSERT INTO user_avatars (user_id, avatar_url, timestamp) VALUES (?, ?, ?)", (user.id, avatar_url, current_time))
 
-            # 2. Guardar Nombre Visible / Apodo (display_name -> ej. "zeta")
             async with db.execute("SELECT display_name FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                 row_name = await cursor.fetchone()
             if not row_name or row_name[0] != display_name:
                 await db.execute("INSERT INTO user_names (user_id, display_name, timestamp) VALUES (?, ?, ?)", (user.id, display_name, current_time))
 
-            # 3. Guardar Username Global (username -> ej. "loudvibe")
             async with db.execute("SELECT tag FROM user_tags WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                 row_tag = await cursor.fetchone()
             if not row_tag or row_tag[0] != username_handle:
                 await db.execute("INSERT INTO user_tags (user_id, tag, timestamp) VALUES (?, ?, ?)", (user.id, username_handle, current_time))
 
-            # 4. Guardar Banner
             if banner_url:
                 async with db.execute("SELECT banner_url FROM user_banners WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
                     row_banner = await cursor.fetchone()
