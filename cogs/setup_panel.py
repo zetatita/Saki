@@ -44,7 +44,6 @@ class ConfigScriptModal(discord.ui.Modal):
 
 class ChatChannelSelect(discord.ui.ChannelSelect):
     def __init__(self, parent_view):
-        # ✅ PERMITE CANALES DE TEXTO Y DE ANUNCIOS/NOTICIAS
         super().__init__(
             placeholder="Canal para el botón 'Chat Here'...", 
             channel_types=[discord.ChannelType.text, discord.ChannelType.news], 
@@ -216,7 +215,6 @@ class ConfigPanelView(discord.ui.View):
 
 class ChannelSelectMenu(discord.ui.ChannelSelect):
     def __init__(self, table_name: str, parent_view: ConfigPanelView):
-        # ✅ PERMITE CANALES DE TEXTO Y DE ANUNCIOS/NOTICIAS
         super().__init__(
             placeholder="Selecciona el canal...", 
             channel_types=[discord.ChannelType.text, discord.ChannelType.news], 
@@ -338,6 +336,58 @@ class SetupPanel(commands.Cog):
 
         view = ConfigPanelView(ctx, "boostmsg")
         await ctx.reply(embed=embed, view=view, mention_author=False)
+
+    # --- LISTENER DE BIENVENIDA ---
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        guild = member.guild
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute("SELECT channel_id, status, message, chat_channel_id, vc_channel_id FROM welcomes WHERE guild_id = ?", (guild.id,)) as cursor:
+                row = await cursor.fetchone()
+        
+        if not row or row[1] != 1 or not row[0]: 
+            return
+        
+        channel = guild.get_channel(row[0])
+        if not channel: 
+            return
+
+        desc = row[2] or "• Please read our rules.\n• Boost for perks."
+        chat_ch, vc_ch = row[3], row[4]
+
+        embed = discord.Embed(description=desc, color=0x2b2d31)
+        guild_icon = guild.icon.url if guild.icon else self.bot.user.display_avatar.url
+        embed.set_author(name=f"We now have {guild.member_count} members!", icon_url=guild_icon)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"Rep /{guild.name.lower()} for Pic Perms!")
+        
+        view = BleedButtonsView(guild, chat_ch, vc_ch)
+        content = f"Welcome, {member.mention}!"
+
+        await channel.send(content=content, embed=embed, view=view)
+
+    # --- LISTENER DE DESPEDIDA ---
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        guild = member.guild
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute("SELECT channel_id, status, message FROM goodbyes WHERE guild_id = ?", (guild.id,)) as cursor:
+                row = await cursor.fetchone()
+        
+        if not row or row[1] != 1 or not row[0]: 
+            return
+        
+        channel = guild.get_channel(row[0])
+        if not channel: 
+            return
+
+        desc = row[2] or f"Goodbye, {member.name}"
+        embed = discord.Embed(description=desc, color=0x2b2d31)
+        guild_icon = guild.icon.url if guild.icon else self.bot.user.display_avatar.url
+        embed.set_author(name=f"Goodbye, {member.name}", icon_url=guild_icon)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        
+        await channel.send(content=f"Goodbye, {member.mention}.", embed=embed)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
