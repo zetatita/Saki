@@ -133,7 +133,9 @@ class ConfigPanelView(discord.ui.View):
                 """)
                 async with db.execute(f"SELECT channel_id, status, message FROM {self.table} WHERE guild_id = ?", (interaction.guild.id,)) as cursor:
                     row = await cursor.fetchone()
-                ch_id, status, msg = row if row else (None, 0, "• Please read our rules.\n• Boost for perks.")
+                
+                default_boost_msg = "¡Gracias por mejorar Saki, {user} 💜!\nYa puedes usar estos comandos:\n\n```text\n!clearavatars, !clearnames, !tags\n```"
+                ch_id, status, msg = row if row else (None, 0, default_boost_msg if self.system_type == "boostmsg" else "• Please read our rules.\n• Boost for perks.")
 
         channel_mention = f"<#{ch_id}>" if ch_id else "*Ninguno*"
         status_text = "✔ Enabled" if status == 1 else "❌ Disabled"
@@ -159,7 +161,9 @@ class ConfigPanelView(discord.ui.View):
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute(f"SELECT message FROM {self.table} WHERE guild_id = ?", (interaction.guild.id,)) as cursor:
                 row = await cursor.fetchone()
-        current_msg = row[0] if row and row[0] else "Escribe tu mensaje aquí..."
+        
+        default_boost_msg = "¡Gracias por mejorar Saki, {user} 💜!\nYa puedes usar estos comandos:\n\n```text\n!clearavatars, !clearnames, !tags\n```"
+        current_msg = row[0] if row and row[0] else (default_boost_msg if self.system_type == "boostmsg" else "Escribe tu mensaje aquí...")
         await interaction.response.send_modal(ConfigScriptModal(self, self.system_type, current_msg))
 
     @discord.ui.button(label="Disable", style=discord.ButtonStyle.danger, row=3)
@@ -182,29 +186,35 @@ class ConfigPanelView(discord.ui.View):
             else:
                 async with db.execute(f"SELECT message FROM {self.table} WHERE guild_id = ?", (guild.id,)) as cursor:
                     row = await cursor.fetchone()
-                desc = row[0] if row and row[0] else "Mensaje de prueba"
+                default_boost_msg = "¡Gracias por mejorar Saki, {user} 💜!\nYa puedes usar estos comandos:\n\n```text\n!clearavatars, !clearnames, !tags\n```"
+                desc = row[0] if row and row[0] else (default_boost_msg if self.system_type == "boostmsg" else "Mensaje de prueba")
 
-        embed = discord.Embed(description=desc, color=0x2b2d31)
         guild_icon = guild.icon.url if guild.icon else self.ctx.bot.user.display_avatar.url
         
         if self.system_type == "welcome":
+            embed = discord.Embed(description=desc, color=0x2b2d31)
             embed.set_author(name=f"We now have {guild.member_count} members!", icon_url=guild_icon)
             embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"Rep /{guild.name.lower()} for Pic Perms!")
             view = BleedButtonsView(guild, chat_ch, vc_ch)
             content = f"Welcome, {member.mention}!"
+            await interaction.response.send_message(content=content, embed=embed, view=view, ephemeral=True)
+            
         elif self.system_type == "goodbye":
+            embed = discord.Embed(description=desc, color=0x2b2d31)
             embed.set_author(name=f"Goodbye, {member.name}", icon_url=guild_icon)
             embed.set_thumbnail(url=member.display_avatar.url)
             view = None
             content = f"Goodbye, {member.mention}."
+            await interaction.response.send_message(content=content, embed=embed, ephemeral=True)
+            
         else:
-            embed.set_author(name=f"New Server Boost!", icon_url=guild_icon)
-            embed.set_thumbnail(url=member.display_avatar.url)
+            formatted_desc = desc.replace("{user}", member.mention).replace("{server}", guild.name)
+            embed = discord.Embed(description=formatted_desc, color=0xb845ff)
+            embed.set_footer(text=f"{guild.premium_subscription_count} boosts • Lvl {guild.premium_tier}", icon_url=guild_icon)
             view = None
-            content = f"Thanks for boosting, {member.mention}!"
-
-        await interaction.response.send_message(content=content, embed=embed, view=view, ephemeral=True)
+            content = f"@{member.name} mejoró el servidor 💜"
+            await interaction.response.send_message(content=content, embed=embed, view=view, ephemeral=True)
 
     @discord.ui.button(label="Reset", style=discord.ButtonStyle.danger, row=3)
     async def reset_system(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -225,7 +235,10 @@ class ChannelSelectMenu(discord.ui.ChannelSelect):
 
     async def callback(self, interaction: discord.Interaction):
         selected_ch = self.values[0]
-        default_msg = "• Please read our rules.\n• Boost for perks.\n• Invite your friends!"
+        if self.table_name == "boosts":
+            default_msg = "¡Gracias por mejorar Saki, {user} 💜!\nYa puedes usar estos comandos:\n\n```text\n!clearavatars, !clearnames, !tags\n```"
+        else:
+            default_msg = "• Please read our rules.\n• Boost for perks.\n• Invite your friends!"
 
         async with aiosqlite.connect(DB_NAME) as db:
             if self.table_name == "welcomes":
@@ -320,12 +333,14 @@ class SetupPanel(commands.Cog):
     @commands.command(name="boostmsg", aliases=["boost"])
     @commands.has_permissions(administrator=True)
     async def boostmsg(self, ctx):
+        default_boost_msg = "¡Gracias por mejorar Saki, {user} 💜!\nYa puedes usar estos comandos:\n\n```text\n!clearavatars, !clearnames, !tags\n```"
+        
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("CREATE TABLE IF NOT EXISTS boosts (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, status INTEGER DEFAULT 1, message TEXT)")
             async with db.execute("SELECT channel_id, status, message FROM boosts WHERE guild_id = ?", (ctx.guild.id,)) as cursor:
                 row = await cursor.fetchone()
 
-        ch_id, status, msg = row if row else (None, 0, "No configurado")
+        ch_id, status, msg = row if row else (None, 0, default_boost_msg)
         channel_mention = f"<#{ch_id}>" if ch_id else "*Ninguno*"
         
         embed = discord.Embed(color=0x78b159 if status == 1 else 0x2b2d31)
@@ -389,6 +404,7 @@ class SetupPanel(commands.Cog):
         
         await channel.send(content=f"Goodbye, {member.mention}.", embed=embed)
 
+    # --- LISTENER DE BOOSTS ---
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         if before.premium_since is None and after.premium_since is not None:
@@ -404,17 +420,16 @@ class SetupPanel(commands.Cog):
             if not channel: 
                 return
 
-            raw_msg = row[2] or "¡Gracias por mejorar el servidor, {user}!"
-            formatted_msg = raw_msg.replace("{user}", after.mention)\
-                                  .replace("{server}", guild.name)\
-                                  .replace("{count}", str(guild.premium_subscription_count))
+            default_boost_msg = "¡Gracias por mejorar Saki, {user} 💜!\nYa puedes usar estos comandos:\n\n```text\n!clearavatars, !clearnames, !tags\n```"
+            raw_msg = row[2] or default_boost_msg
+            formatted_msg = raw_msg.replace("{user}", after.mention).replace("{server}", guild.name)
 
             embed = discord.Embed(description=formatted_msg, color=0xb845ff)
             guild_icon = guild.icon.url if guild.icon else self.bot.user.display_avatar.url
-            embed.set_author(name=f"@{after.name} mejoró el servidor 💜", icon_url=after.display_avatar.url)
             embed.set_footer(text=f"{guild.premium_subscription_count} boosts • Lvl {guild.premium_tier}", icon_url=guild_icon)
             
-            await channel.send(embed=embed)
+            content = f"@{after.name} mejoró el servidor 💜"
+            await channel.send(content=content, embed=embed)
 
 async def setup(bot):
     await bot.add_cog(SetupPanel(bot))
