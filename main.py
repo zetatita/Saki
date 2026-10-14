@@ -26,7 +26,7 @@ initial_extensions = [
     'cogs.help',
     'cogs.setup_panel',
     'cogs.music',
-    'cogs,audit_logs',
+    'cogs.audit_logs',
 ]
 
 @bot.event
