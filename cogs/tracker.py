@@ -149,7 +149,7 @@ class ProfileView(discord.ui.View):
                     color=0x2b2d31
                 )
                 embed.set_footer(text=f"Página {self.current_page + 1}/{self.total_pages} ({len(rows)} registros)")
-                await interaction.edit_original_response(content=None, embed=embed, attachments=[], view=self)
+                await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
             elif self.current_selected == "tags":
                 async with db.execute(
@@ -179,7 +179,7 @@ class ProfileView(discord.ui.View):
                     color=0x2b2d31
                 )
                 embed.set_footer(text=f"Página {self.current_page + 1}/{self.total_pages} ({len(rows)} registros)")
-                await interaction.edit_original_response(content=None, embed=embed, attachments=[], view=self)
+                await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
             elif self.current_selected == "avatars":
                 async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 25", (self.target_user.id,)) as cursor:
@@ -197,10 +197,10 @@ class ProfileView(discord.ui.View):
                 if grid_file:
                     file = discord.File(grid_file, filename="avatars.png")
                     embed.set_image(url="attachment://avatars.png")
-                    await interaction.edit_original_response(content=None, embed=embed, attachments=[file], view=self)
+                    await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
                 else:
                     embed.set_image(url=str(self.target_user.display_avatar.url))
-                    await interaction.edit_original_response(content=None, embed=embed, attachments=[], view=self)
+                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
             elif self.current_selected == "ficha":
                 member = interaction.guild.get_member(self.target_user.id) if interaction.guild else None
@@ -225,7 +225,7 @@ class ProfileView(discord.ui.View):
                     inline=False
                 )
                 embed.set_footer(text="SAKI", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
-                await interaction.edit_original_response(content=None, embed=embed, attachments=[], view=self)
+                await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
 
 class Tracker(commands.Cog):
@@ -287,24 +287,6 @@ class Tracker(commands.Cog):
         except Exception:
             pass
 
-    def check_clear_permission(self, ctx) -> bool:
-        if not isinstance(ctx.author, discord.Member):
-            return False
-        return ctx.author.guild_permissions.administrator or ctx.author.premium_since is not None
-
-    async def send_boost_required_embed(self, ctx):
-        embed = discord.Embed(
-            title="🚀 **Función Exclusiva de Mejoras / Boost**",
-            description=(
-                "Para poder usar los comandos de limpieza de historial debes haber "
-                "**mejorado (boosteado) el servidor** o contar con permisos de Administrador.\n\n"
-                "✨ *¡Boostea el servidor para desbloquear este y más beneficios exclusivos!*"
-            ),
-            color=0x2b2d31
-        )
-        embed.set_footer(text=f"Solicitado por {ctx.author}", icon_url=ctx.author.display_avatar.url)
-        await ctx.reply(embed=embed, mention_author=False)
-
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         await self.record_user(after)
@@ -312,8 +294,6 @@ class Tracker(commands.Cog):
     @commands.Cog.listener()
     async def on_user_update(self, before: discord.User, after: discord.User):
         await self.record_user(after)
-
-    # --- COMANDOS DIRECTOS Y RESISTENTES ---
 
     @commands.command(name="avatar", aliases=["av"])
     async def avatar(self, ctx, user: discord.User = None):
@@ -350,8 +330,8 @@ class Tracker(commands.Cog):
             embed.set_image(url=str(target.display_avatar.url))
             await ctx.reply(embed=embed, view=view, mention_author=False)
 
-    @commands.command(name="usernames", aliases=["names", "historynames"])
-    async def usernames(self, ctx, user: discord.User = None):
+    @commands.command(name="names", aliases=["usernames", "historynames"])
+    async def names(self, ctx, user: discord.User = None):
         target = user or ctx.author
         try:
             await self.record_user(target)
@@ -445,50 +425,6 @@ class Tracker(commands.Cog):
 
         view = ProfileView(target, current_selected="ficha", current_page=0)
         await ctx.reply(embed=embed, view=view, mention_author=False)
-
-    @commands.command(name="clearavatars")
-    async def clearavatars(self, ctx, member: discord.Member = None):
-        if not self.check_clear_permission(ctx):
-            return await self.send_boost_required_embed(ctx)
-        target = member if member and ctx.author.guild_permissions.administrator else ctx.author
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM user_avatars WHERE user_id = ?", (target.id,))
-            await db.commit()
-        embed = discord.Embed(description=f"### **Limpieza de Avatares**\n\nSe ha borrado exitosamente el historial de avatares para **{target.name}**.", color=0x2b2d31)
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="clearnames")
-    async def clearnames(self, ctx, member: discord.Member = None):
-        if not self.check_clear_permission(ctx):
-            return await self.send_boost_required_embed(ctx)
-        target = member if member and ctx.author.guild_permissions.administrator else ctx.author
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM user_names WHERE user_id = ?", (target.id,))
-            await db.commit()
-        embed = discord.Embed(description=f"### **Limpieza de Nombres**\n\nSe ha borrado exitosamente el historial de nombres para **{target.name}**.", color=0x2b2d31)
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="cleartags")
-    async def cleartags(self, ctx, member: discord.Member = None):
-        if not self.check_clear_permission(ctx):
-            return await self.send_boost_required_embed(ctx)
-        target = member if member and ctx.author.guild_permissions.administrator else ctx.author
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM user_tags WHERE user_id = ?", (target.id,))
-            await db.commit()
-        embed = discord.Embed(description=f"### **Limpieza de Tags**\n\nSe ha borrado exitosamente el historial de tags para **{target.name}**.", color=0x2b2d31)
-        await ctx.reply(embed=embed, mention_author=False)
-
-    @commands.command(name="clearbanners")
-    async def clearbanners(self, ctx, member: discord.Member = None):
-        if not self.check_clear_permission(ctx):
-            return await self.send_boost_required_embed(ctx)
-        target = member if member and ctx.author.guild_permissions.administrator else ctx.author
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("DELETE FROM user_banners WHERE user_id = ?", (target.id,))
-            await db.commit()
-        embed = discord.Embed(description=f"### **Limpieza de Banners**\n\nSe ha borrado exitosamente el historial de banners para **{target.name}**.", color=0x2b2d31)
-        await ctx.reply(embed=embed, mention_author=False)
 
 async def setup(bot):
     await bot.add_cog(Tracker(bot))
