@@ -444,7 +444,7 @@ class Tracker(commands.Cog):
         target = user or ctx.author
         try:
             await self.record_user(target)
-        } except Exception:
+        except Exception:
             pass
 
         try:
