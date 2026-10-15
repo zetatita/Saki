@@ -67,7 +67,10 @@ class ProfileSelect(discord.ui.Select):
         super().__init__(placeholder="Selecciona una opción...", options=options, min_values=1, max_values=1, row=0)
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except Exception:
+            pass
         selected = self.values[0]
         view = ProfileView(self.target_user, current_selected=selected, current_page=0)
         await view.update_message(interaction)
@@ -97,7 +100,10 @@ class ProfileView(discord.ui.View):
 
     @discord.ui.button(emoji="✖️", style=discord.ButtonStyle.secondary, row=1)
     async def close_menu(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.message.delete()
+        try:
+            await interaction.message.delete()
+        except Exception:
+            pass
 
     @discord.ui.button(emoji="▶️", style=discord.ButtonStyle.primary, row=1)
     async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -150,10 +156,13 @@ class ProfileView(discord.ui.View):
                 )
                 embed.set_footer(text=f"Página {self.current_page + 1}/{self.total_pages} ({len(rows)} registros)")
                 
-                if interaction.response.is_done():
-                    await interaction.edit_original_response(embed=embed, attachments=[], view=self)
-                else:
-                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                try:
+                    if interaction.response.is_done():
+                        await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                    else:
+                        await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                except Exception:
+                    pass
 
             elif self.current_selected == "tags":
                 async with db.execute(
@@ -184,10 +193,13 @@ class ProfileView(discord.ui.View):
                 )
                 embed.set_footer(text=f"Página {self.current_page + 1}/{self.total_pages} ({len(rows)} registros)")
                 
-                if interaction.response.is_done():
-                    await interaction.edit_original_response(embed=embed, attachments=[], view=self)
-                else:
-                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                try:
+                    if interaction.response.is_done():
+                        await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                    else:
+                        await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                except Exception:
+                    pass
 
             elif self.current_selected == "avatars":
                 async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 25", (self.target_user.id,)) as cursor:
@@ -202,19 +214,22 @@ class ProfileView(discord.ui.View):
                 )
                 embed.set_author(name=self.target_user.name, icon_url=self.target_user.display_avatar.url)
 
-                if grid_file:
-                    file = discord.File(grid_file, filename="avatars.png")
-                    embed.set_image(url="attachment://avatars.png")
-                    if interaction.response.is_done():
-                        await interaction.edit_original_response(embed=embed, attachments=[file], view=self)
+                try:
+                    if grid_file:
+                        file = discord.File(grid_file, filename="avatars.png")
+                        embed.set_image(url="attachment://avatars.png")
+                        if interaction.response.is_done():
+                            await interaction.edit_original_response(embed=embed, attachments=[file], view=self)
+                        else:
+                            await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
                     else:
-                        await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
-                else:
-                    embed.set_image(url=str(self.target_user.display_avatar.url))
-                    if interaction.response.is_done():
-                        await interaction.edit_original_response(embed=embed, attachments=[], view=self)
-                    else:
-                        await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                        embed.set_image(url=str(self.target_user.display_avatar.url))
+                        if interaction.response.is_done():
+                            await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                        else:
+                            await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                except Exception:
+                    pass
 
             elif self.current_selected == "ficha":
                 member = interaction.guild.get_member(self.target_user.id) if interaction.guild else None
@@ -240,10 +255,13 @@ class ProfileView(discord.ui.View):
                 )
                 embed.set_footer(text="SAKI", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
                 
-                if interaction.response.is_done():
-                    await interaction.edit_original_response(embed=embed, attachments=[], view=self)
-                else:
-                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                try:
+                    if interaction.response.is_done():
+                        await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                    else:
+                        await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                except Exception:
+                    pass
 
 
 class Tracker(commands.Cog):
@@ -349,7 +367,7 @@ class Tracker(commands.Cog):
             await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @commands.command(name="names", aliases=["usernames", "historynames"])
-    async def names_cmd(self, ctx, user: discord.User = None):
+    async def names(self, ctx, user: discord.User = None):
         target = user or ctx.author
         try:
             await self.record_user(target)
@@ -426,7 +444,7 @@ class Tracker(commands.Cog):
         target = user or ctx.author
         try:
             await self.record_user(target)
-        except Exception:
+        } except Exception:
             pass
 
         try:
