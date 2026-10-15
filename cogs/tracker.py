@@ -331,7 +331,7 @@ class Tracker(commands.Cog):
             await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @commands.command(name="names", aliases=["usernames", "historynames"])
-    async def names(self, ctx, user: discord.User = None):
+    async def names_cmd(self, ctx, user: discord.User = None):
         target = user or ctx.author
         try:
             await self.record_user(target)
