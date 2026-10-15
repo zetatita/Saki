@@ -149,7 +149,11 @@ class ProfileView(discord.ui.View):
                     color=0x2b2d31
                 )
                 embed.set_footer(text=f"Página {self.current_page + 1}/{self.total_pages} ({len(rows)} registros)")
-                await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                
+                if interaction.response.is_done():
+                    await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                else:
+                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
             elif self.current_selected == "tags":
                 async with db.execute(
@@ -179,7 +183,11 @@ class ProfileView(discord.ui.View):
                     color=0x2b2d31
                 )
                 embed.set_footer(text=f"Página {self.current_page + 1}/{self.total_pages} ({len(rows)} registros)")
-                await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                
+                if interaction.response.is_done():
+                    await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                else:
+                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
             elif self.current_selected == "avatars":
                 async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 25", (self.target_user.id,)) as cursor:
@@ -197,10 +205,16 @@ class ProfileView(discord.ui.View):
                 if grid_file:
                     file = discord.File(grid_file, filename="avatars.png")
                     embed.set_image(url="attachment://avatars.png")
-                    await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
+                    if interaction.response.is_done():
+                        await interaction.edit_original_response(embed=embed, attachments=[file], view=self)
+                    else:
+                        await interaction.response.edit_message(embed=embed, attachments=[file], view=self)
                 else:
                     embed.set_image(url=str(self.target_user.display_avatar.url))
-                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                    if interaction.response.is_done():
+                        await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                    else:
+                        await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
             elif self.current_selected == "ficha":
                 member = interaction.guild.get_member(self.target_user.id) if interaction.guild else None
@@ -225,7 +239,11 @@ class ProfileView(discord.ui.View):
                     inline=False
                 )
                 embed.set_footer(text="SAKI", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
-                await interaction.response.edit_message(embed=embed, attachments=[], view=self)
+                
+                if interaction.response.is_done():
+                    await interaction.edit_original_response(embed=embed, attachments=[], view=self)
+                else:
+                    await interaction.response.edit_message(embed=embed, attachments=[], view=self)
 
 
 class Tracker(commands.Cog):
