@@ -55,7 +55,7 @@ async def create_avatar_grid(avatar_urls):
 
 
 class ProfileSelect(discord.ui.Select):
-    def __init__(self, target_user: discord.User, current_selected: str = "names"):
+    def __init__(self, target_user, current_selected: str = "names"):
         self.target_user = target_user
         
         options = [
@@ -74,7 +74,7 @@ class ProfileSelect(discord.ui.Select):
 
 
 class ProfileView(discord.ui.View):
-    def __init__(self, target_user: discord.User, current_selected: str = "names", current_page: int = 0):
+    def __init__(self, target_user, current_selected: str = "names", current_page: int = 0):
         super().__init__(timeout=120)
         self.target_user = target_user
         self.current_selected = current_selected
@@ -127,8 +127,9 @@ class ProfileView(discord.ui.View):
                 ) as cursor:
                     rows = await cursor.fetchall()
 
+                display_fallback = getattr(self.target_user, "display_name", self.target_user.name)
                 if not rows:
-                    rows = [(self.target_user.display_name, int(time.time()))]
+                    rows = [(display_fallback, int(time.time()))]
 
                 self.total_pages = max(1, (len(rows) - 1) // self.per_page + 1)
                 start = self.current_page * self.per_page
@@ -137,10 +138,9 @@ class ProfileView(discord.ui.View):
                 lines = []
                 for idx, (name_val, ts_val) in enumerate(page_items):
                     try:
-                        ts_num = int(ts_val) if str(ts_val).isdigit() else int(time.time())
+                        ts_num = int(ts_val)
                     except Exception:
                         ts_num = int(time.time())
-                    
                     lines.append(f"`{start + idx + 1}.` **{name_val}** • <t:{ts_num}:R>")
 
                 embed = discord.Embed(
@@ -168,10 +168,9 @@ class ProfileView(discord.ui.View):
                 lines = []
                 for idx, (tag_val, ts_val) in enumerate(page_items):
                     try:
-                        ts_num = int(ts_val) if str(ts_val).isdigit() else int(time.time())
+                        ts_num = int(ts_val)
                     except Exception:
                         ts_num = int(time.time())
-                    
                     lines.append(f"`{start + idx + 1}.` **{tag_val}** • <t:{ts_num}:R>")
 
                 embed = discord.Embed(
@@ -235,75 +234,58 @@ class Tracker(commands.Cog):
 
     async def init_db(self):
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS user_avatars (
-                    user_id INTEGER,
-                    avatar_url TEXT,
-                    timestamp INTEGER
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS user_names (
-                    user_id INTEGER,
-                    display_name TEXT,
-                    timestamp INTEGER
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS user_tags (
-                    user_id INTEGER,
-                    tag TEXT,
-                    timestamp INTEGER
-                )
-            """)
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS user_banners (
-                    user_id INTEGER,
-                    banner_url TEXT,
-                    timestamp INTEGER
-                )
-            """)
+            await db.execute("CREATE TABLE IF NOT EXISTS user_avatars (user_id INTEGER, avatar_url TEXT, timestamp INTEGER)")
+            await db.execute("CREATE TABLE IF NOT EXISTS user_names (user_id INTEGER, display_name TEXT, timestamp INTEGER)")
+            await db.execute("CREATE TABLE IF NOT EXISTS user_tags (user_id INTEGER, tag TEXT, timestamp INTEGER)")
+            await db.execute("CREATE TABLE IF NOT EXISTS user_banners (user_id INTEGER, banner_url TEXT, timestamp INTEGER)")
             await db.commit()
 
     async def cog_load(self):
         await self.init_db()
 
     async def record_user(self, user):
-        avatar_url = str(user.display_avatar.url)
-        display_name = getattr(user, "display_name", user.name)
-        username_handle = user.name
-
+        if not user:
+            return
         try:
-            fetched_user = await self.bot.fetch_user(user.id)
-            banner_url = str(fetched_user.banner.url) if fetched_user.banner else None
-        except Exception:
+            avatar_url = str(user.display_avatar.url)
+            display_name = getattr(user, "display_name", user.name)
+            username_handle = user.name
             banner_url = None
 
-        current_time = int(time.time())
+            try:
+                fetched_user = await self.bot.fetch_user(user.id)
+                if fetched_user and fetched_user.banner:
+                    banner_url = str(fetched_user.banner.url)
+            except Exception:
+                pass
 
-        async with aiosqlite.connect(DB_NAME) as db:
-            async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
-                row_avatar = await cursor.fetchone()
-            if not row_avatar or row_avatar[0] != avatar_url:
-                await db.execute("INSERT INTO user_avatars (user_id, avatar_url, timestamp) VALUES (?, ?, ?)", (user.id, avatar_url, current_time))
+            current_time = int(time.time())
 
-            async with db.execute("SELECT display_name FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
-                row_name = await cursor.fetchone()
-            if not row_name or row_name[0] != display_name:
-                await db.execute("INSERT INTO user_names (user_id, display_name, timestamp) VALUES (?, ?, ?)", (user.id, display_name, current_time))
+            async with aiosqlite.connect(DB_NAME) as db:
+                async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                    row_avatar = await cursor.fetchone()
+                if not row_avatar or row_avatar[0] != avatar_url:
+                    await db.execute("INSERT INTO user_avatars (user_id, avatar_url, timestamp) VALUES (?, ?, ?)", (user.id, avatar_url, current_time))
 
-            async with db.execute("SELECT tag FROM user_tags WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
-                row_tag = await cursor.fetchone()
-            if not row_tag or row_tag[0] != username_handle:
-                await db.execute("INSERT INTO user_tags (user_id, tag, timestamp) VALUES (?, ?, ?)", (user.id, username_handle, current_time))
+                async with db.execute("SELECT display_name FROM user_names WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                    row_name = await cursor.fetchone()
+                if not row_name or row_name[0] != display_name:
+                    await db.execute("INSERT INTO user_names (user_id, display_name, timestamp) VALUES (?, ?, ?)", (user.id, display_name, current_time))
 
-            if banner_url:
-                async with db.execute("SELECT banner_url FROM user_banners WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
-                    row_banner = await cursor.fetchone()
-                if not row_banner or row_banner[0] != banner_url:
-                    await db.execute("INSERT INTO user_banners (user_id, banner_url, timestamp) VALUES (?, ?, ?)", (user.id, banner_url, current_time))
+                async with db.execute("SELECT tag FROM user_tags WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                    row_tag = await cursor.fetchone()
+                if not row_tag or row_tag[0] != username_handle:
+                    await db.execute("INSERT INTO user_tags (user_id, tag, timestamp) VALUES (?, ?, ?)", (user.id, username_handle, current_time))
 
-            await db.commit()
+                if banner_url:
+                    async with db.execute("SELECT banner_url FROM user_banners WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user.id,)) as cursor:
+                        row_banner = await cursor.fetchone()
+                    if not row_banner or row_banner[0] != banner_url:
+                        await db.execute("INSERT INTO user_banners (user_id, banner_url, timestamp) VALUES (?, ?, ?)", (user.id, banner_url, current_time))
+
+                await db.commit()
+        except Exception:
+            pass
 
     def check_clear_permission(self, ctx) -> bool:
         if not isinstance(ctx.author, discord.Member):
@@ -331,6 +313,8 @@ class Tracker(commands.Cog):
     async def on_user_update(self, before: discord.User, after: discord.User):
         await self.record_user(after)
 
+    # --- COMANDOS DIRECTOS Y RESISTENTES ---
+
     @commands.command(name="avatar", aliases=["av"])
     async def avatar(self, ctx, user: discord.User = None):
         target = user or ctx.author
@@ -342,8 +326,10 @@ class Tracker(commands.Cog):
     @commands.command(name="avatars", aliases=["historyavatars"])
     async def avatars(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        member = ctx.guild.get_member(target.id) if ctx.guild else target
-        await self.record_user(member)
+        try:
+            await self.record_user(target)
+        except Exception:
+            pass
 
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT avatar_url FROM user_avatars WHERE user_id = ? ORDER BY timestamp DESC LIMIT 25", (target.id,)) as cursor:
@@ -367,8 +353,10 @@ class Tracker(commands.Cog):
     @commands.command(name="usernames", aliases=["names", "historynames"])
     async def usernames(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        member = ctx.guild.get_member(target.id) if ctx.guild else target
-        await self.record_user(member)
+        try:
+            await self.record_user(target)
+        except Exception:
+            pass
 
         view = ProfileView(target, current_selected="names", current_page=0)
         
@@ -376,7 +364,7 @@ class Tracker(commands.Cog):
             async with db.execute("SELECT display_name, timestamp FROM user_names WHERE user_id = ? ORDER BY timestamp DESC", (target.id,)) as cursor:
                 rows = await cursor.fetchall()
 
-        display_fallback = getattr(member, "display_name", target.name)
+        display_fallback = getattr(target, "display_name", target.name)
         if not rows:
             rows = [(display_fallback, int(time.time()))]
 
@@ -386,7 +374,7 @@ class Tracker(commands.Cog):
         lines = []
         for idx, (name_val, ts_val) in enumerate(page_items):
             try:
-                ts_num = int(ts_val) if str(ts_val).isdigit() else int(time.time())
+                ts_num = int(ts_val)
             except Exception:
                 ts_num = int(time.time())
             lines.append(f"`{idx + 1}.` **{name_val}** • <t:{ts_num}:R>")
@@ -397,14 +385,15 @@ class Tracker(commands.Cog):
             color=0x2b2d31
         )
         embed.set_footer(text=f"Página 1/{total_pages} ({len(rows)} registros)")
-        
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @commands.command(name="tags", aliases=["historytags"])
     async def tags(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        member = ctx.guild.get_member(target.id) if ctx.guild else target
-        await self.record_user(member)
+        try:
+            await self.record_user(target)
+        except Exception:
+            pass
 
         view = ProfileView(target, current_selected="tags", current_page=0)
 
@@ -421,7 +410,7 @@ class Tracker(commands.Cog):
         lines = []
         for idx, (tag_val, ts_val) in enumerate(page_items):
             try:
-                ts_num = int(ts_val) if str(ts_val).isdigit() else int(time.time())
+                ts_num = int(ts_val)
             except Exception:
                 ts_num = int(time.time())
             lines.append(f"`{idx + 1}.` **{tag_val}** • <t:{ts_num}:R>")
@@ -432,13 +421,15 @@ class Tracker(commands.Cog):
             color=0x2b2d31
         )
         embed.set_footer(text=f"Página 1/{total_pages} ({len(rows)} registros)")
-        
         await ctx.reply(embed=embed, view=view, mention_author=False)
 
     @commands.command(name="historybanners", aliases=["banners"])
     async def historybanners(self, ctx, user: discord.User = None):
         target = user or ctx.author
-        await self.record_user(target)
+        try:
+            await self.record_user(target)
+        except Exception:
+            pass
 
         try:
             fetched_user = await self.bot.fetch_user(target.id)
@@ -446,7 +437,7 @@ class Tracker(commands.Cog):
             fetched_user = target
 
         embed = discord.Embed(title=f"🎨 Banner de {target.name}", color=0x2b2d31)
-        if fetched_user.banner:
+        if fetched_user and getattr(fetched_user, "banner", None):
             embed.set_image(url=fetched_user.banner.url)
         else:
             embed.description = f"❌ **{target.name}** no tiene un banner configurado (mostrando avatar)."
